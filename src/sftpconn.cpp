@@ -1278,9 +1278,8 @@ bool CSftpConnection::ExecCommandStream(const char* command, ExecStreamCallback 
         }
     }
 
-    libssh2_session_set_blocking(Session, 1);
-    libssh2_channel_close(ch);
     libssh2_channel_free(ch);
+    libssh2_session_set_blocking(Session, 1);
     return true;
 }
 

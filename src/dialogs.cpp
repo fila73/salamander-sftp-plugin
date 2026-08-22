@@ -981,8 +981,12 @@ void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remo
     if (ctx.hThread != NULL)
     {
         ctx.cancelRequested = true;
-        WaitForSingleObject(ctx.hThread, 3000);
+        if (WaitForSingleObject(ctx.hThread, 500) == WAIT_TIMEOUT)
+        {
+            TerminateThread(ctx.hThread, 0);
+        }
         CloseHandle(ctx.hThread);
+        ctx.hThread = NULL;
     }
     DeleteCriticalSection(&ctx.cs);
 }
