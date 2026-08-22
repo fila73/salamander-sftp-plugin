@@ -2244,8 +2244,8 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
             mi.fState = enabled ? MFS_ENABLED : MFS_DISABLED;
             InsertMenuItem(menu, i++, TRUE, &mi);
 
-            // Insert Execute directly after Open (the very first command) without any separator
-            if (!insertedExecute && focusedFile != NULL && !isDir)
+            // Insert Execute directly after Open (SALCMD_OPEN) without any separator
+            if (!insertedExecute && salCmd == SALCMD_OPEN && focusedFile != NULL && !isDir)
             {
                 insertedExecute = true;
                 char execBuf[100];
@@ -2260,6 +2260,21 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
                 mi.fState = MFS_ENABLED;
                 InsertMenuItem(menu, i++, TRUE, &mi);
             }
+        }
+        if (!insertedExecute && focusedFile != NULL && !isDir)
+        {
+            insertedExecute = true;
+            char execBuf[100];
+            lstrcpyn(execBuf, LoadStr(IDS_MENU_EXECUTE), sizeof(execBuf));
+            memset(&mi, 0, sizeof(mi));
+            mi.cbSize = sizeof(mi);
+            mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
+            mi.fType = MFT_STRING;
+            mi.wID = MENUCMD_EXECUTEFILE;
+            mi.dwTypeData = execBuf;
+            mi.cch = (UINT)strlen(execBuf);
+            mi.fState = MFS_ENABLED;
+            InsertMenuItem(menu, i++, TRUE, &mi);
         }
         DWORD cmd = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON,
                                      menuX, menuY, parent, NULL);
