@@ -2208,7 +2208,6 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
     {
         int i = 0;
 
-        // Insert custom SFTP commands at top of context menu
         BOOL isDir = FALSE;
         const CFileData* focusedFile = SalamanderGeneral->GetPanelFocusedItem(panel, &isDir);
         if (focusedFile == NULL || isDir)
@@ -2216,33 +2215,15 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
             int idx = 0;
             focusedFile = SalamanderGeneral->GetPanelSelectedItem(panel, &idx, &isDir);
         }
-        if (focusedFile != NULL && !isDir)
-        {
-            memset(&mi, 0, sizeof(mi));
-            mi.cbSize = sizeof(mi);
-            mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
-            mi.fType = MFT_STRING;
-            mi.wID = MENUCMD_EXECUTEFILE;
-            lstrcpyn(nameBuf, LoadStr(IDS_MENU_EXECUTE), sizeof(nameBuf));
-            mi.dwTypeData = nameBuf;
-            mi.cch = (UINT)strlen(nameBuf);
-            mi.fState = MFS_ENABLED;
-            InsertMenuItem(menu, i++, TRUE, &mi);
 
-            memset(&mi, 0, sizeof(mi));
-            mi.cbSize = sizeof(mi);
-            mi.fMask = MIIM_TYPE;
-            mi.fType = MFT_SEPARATOR;
-            InsertMenuItem(menu, i++, TRUE, &mi);
-        }
-
+        bool insertedExecute = false;
         int index = 0;
         int salCmd;
         BOOL enabled;
         int type2, lastType = sctyUnknown;
         while (SalamanderGeneral->EnumSalamanderCommands(&index, &salCmd, nameBuf, 200, &enabled, &type2))
         {
-            if (type2 != lastType /*&& lastType != sctyUnknown*/) // insert a separator
+            if (type2 != lastType && lastType != sctyUnknown) // insert a separator between command groups
             {
                 memset(&mi, 0, sizeof(mi));
                 mi.cbSize = sizeof(mi);
@@ -2262,6 +2243,23 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
             mi.cch = (UINT)strlen(nameBuf);
             mi.fState = enabled ? MFS_ENABLED : MFS_DISABLED;
             InsertMenuItem(menu, i++, TRUE, &mi);
+
+            // Insert Execute directly after Open (the very first command) without any separator
+            if (!insertedExecute && focusedFile != NULL && !isDir)
+            {
+                insertedExecute = true;
+                char execBuf[100];
+                lstrcpyn(execBuf, LoadStr(IDS_MENU_EXECUTE), sizeof(execBuf));
+                memset(&mi, 0, sizeof(mi));
+                mi.cbSize = sizeof(mi);
+                mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
+                mi.fType = MFT_STRING;
+                mi.wID = MENUCMD_EXECUTEFILE;
+                mi.dwTypeData = execBuf;
+                mi.cch = (UINT)strlen(execBuf);
+                mi.fState = MFS_ENABLED;
+                InsertMenuItem(menu, i++, TRUE, &mi);
+            }
         }
         DWORD cmd = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON,
                                      menuX, menuY, parent, NULL);

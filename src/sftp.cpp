@@ -767,7 +767,7 @@ CPluginInterface::Connect(HWND parent, CSalamanderConnectAbstract* salamander)
     CALL_STACK_MESSAGE1("CPluginInterface::Connect(,)");
 
 #if !defined(ENABLE_DYNAMICMENUEXT)
-    salamander->AddMenuItem(-1, "&Execute (server)", SALHOTKEY(VK_RETURN, HOTKEYF_SHIFT), MENUCMD_EXECUTEFILE, FALSE,
+    salamander->AddMenuItem(-1, "&Execute (server)", SALHOTKEY(VK_F9, 0), MENUCMD_EXECUTEFILE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS | MENU_EVENT_FILE_FOCUSED, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, "&Edit File (server)", SALHOTKEY(VK_F4, 0), MENUCMD_EDITFILE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS | MENU_EVENT_FILE_FOCUSED, MENU_SKILLLEVEL_ALL);

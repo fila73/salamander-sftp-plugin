@@ -52,5 +52,5 @@ STRINGTABLE
  IDS_TBTT_PASTE,             "Paste\tCtrl+V"
  IDS_TBTT_FILTER,            "Filter\tCtrl+U"
  IDS_FILTER,                 "Filter"
- IDS_MENU_EXECUTE,           "&Execute\tShift+Enter"
+ IDS_MENU_EXECUTE,           "&Execute\tF9"
 }
