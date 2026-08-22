@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -320,7 +320,7 @@ CPluginInterfaceForThumbLoader::LoadThumbnail(const char* filename,
 
                                     int rowSize = (DWORD)(bih.biWidth * bih.biBitCount + 31) / 32 * 4;
 
-                                    int bufferLines = min(max(1, 50000 / rowSize), bih.biHeight);
+                                    int bufferLines = (int)std::min<LONG>(std::max<LONG>(1, 50000 / rowSize), bih.biHeight);
                                     DWORD bufferSize = bufferLines * rowSize;
                                     void* srcBuffer = malloc(bufferSize + 1); // +1 as headroom for ConvertDIBToCOLORREF/24-bit
                                     void* dstBuffer;
@@ -336,7 +336,7 @@ CPluginInterfaceForThumbLoader::LoadThumbnail(const char* filename,
                                             int line = 0;
                                             while (!exit)
                                             {
-                                                int readLines = min(bufferLines, bih.biHeight - line);
+                                                int readLines = (int)std::min<LONG>(bufferLines, bih.biHeight - line);
                                                 if (ReadFile(hFile, srcBuffer, readLines * rowSize, &read, NULL))
                                                 {
                                                     if (read == (DWORD)readLines * rowSize)

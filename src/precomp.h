@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -14,8 +14,8 @@
 #define WIN32_LEAN_AND_MEAN // exclude rarely-used stuff from Windows headers
 
 #include <windows.h>
-#include <CommDlg.h>
-#include <ShellAPI.h>
+#include <commdlg.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #ifdef _MSC_VER
 #include <crtdbg.h>
@@ -60,6 +60,7 @@
 #include "dbg.h"
 #include "mhandles.h"
 #include "arraylt.h"
+#define ENABLE_PROPERTYDIALOG
 #include "winliblt.h"
 #include "auxtools.h"
 #ifdef USE_DARKMODELIB
@@ -69,9 +70,5 @@
 #include "sftp.h"
 #include "sftp.rh"
 #include "sftp.rh2"
-#include "lang\lang.rh"
+#include "lang/lang.rh"
 
-#ifdef __BORLANDC__
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-#endif // __BORLANDC__

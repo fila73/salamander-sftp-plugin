@@ -1,4 +1,4 @@
-﻿//{{NO_DEPENDENCIES}}
+//{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
 // Used by lang.rc
 //
@@ -43,6 +43,10 @@
 #define IDC_ST_PAGE3_ENCRYPTION         545
 #define IDC_ST_PAGE3_ENCODING           597
 #define IDC_ST_PAGE3_CIPHERS            598
+#define IDC_ST_PAGE4_SFTP               599
+#define IDC_ST_PAGE4_SFTPSERVER         600
+#define IDC_SFTPSERVER                  601
+#define IDC_ST_PAGE4_SFTPSERVER_NOTE    602
 #define IDC_SSHCOMPRESS                 546
 #define IDD_INPUT                       547
 #define IDC_INPUTPROMPT                 548

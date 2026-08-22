@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -58,7 +58,7 @@ static HBITMAP ScaleToolbarStrip(HBITMAP source, int iconSize)
     if (bitmap.bmHeight == iconSize)
         return source;
 
-    int count = max(1, bitmap.bmWidth / bitmap.bmHeight);
+    int count = (int)std::max<LONG>(1, bitmap.bmWidth / bitmap.bmHeight);
     HDC screenDC = HANDLES(GetDC(NULL));
     if (screenDC == NULL)
         return NULL;

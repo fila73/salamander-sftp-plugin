@@ -191,14 +191,12 @@ void InitIconOverlays()
 // SalamanderPluginGetReqVer and SalamanderPluginGetSDKVer
 //
 
-#ifdef __BORLANDC__
 extern "C"
 {
     int WINAPI SalamanderPluginGetReqVer();
     int WINAPI SalamanderPluginGetSDKVer();
     CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbstract* salamander);
 };
-#endif // __BORLANDC__
 
 int WINAPI SalamanderPluginGetReqVer()
 {
@@ -647,6 +645,7 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
                     registry->GetValue(pk, "Password", REG_SZ, p.Password, sizeof(p.Password));
                     registry->GetValue(pk, "KeyFile", REG_SZ, p.KeyFile, sizeof(p.KeyFile));
                     registry->GetValue(pk, "Path", REG_SZ, p.Path, sizeof(p.Path));
+                    registry->GetValue(pk, "SftpServer", REG_SZ, p.SftpServer, sizeof(p.SftpServer));
                     DWORD comp = 0, proto = 0, scpfb = 0;
                     registry->GetValue(pk, "Compression", REG_DWORD, &comp, sizeof(DWORD));
                     registry->GetValue(pk, "Protocol", REG_DWORD, &proto, sizeof(DWORD));
@@ -728,6 +727,7 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
                 registry->SetValue(pk, "Password", REG_SZ, SftpProfiles[i].Password, -1);
                 registry->SetValue(pk, "KeyFile", REG_SZ, SftpProfiles[i].KeyFile, -1);
                 registry->SetValue(pk, "Path", REG_SZ, SftpProfiles[i].Path, -1);
+                registry->SetValue(pk, "SftpServer", REG_SZ, SftpProfiles[i].SftpServer, -1);
                 DWORD comp = SftpProfiles[i].UseCompression ? 1 : 0;
                 DWORD proto = (DWORD)SftpProfiles[i].Protocol;
                 DWORD scpfb = SftpProfiles[i].ScpFallback ? 1 : 0;
@@ -740,6 +740,18 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
         }
         registry->CloseKey(serversKey);
     }
+}
+
+static void WINAPI SftpLoadOrSaveConfigurationCallback(BOOL load, HKEY regKey, CSalamanderRegistryAbstract* registry, void* param)
+{
+    if (!load)
+        PluginInterface.SaveConfiguration((HWND)param, regKey, registry);
+}
+
+void SaveSftpConfigurationImmediately(HWND parent)
+{
+    if (SalamanderGeneral != NULL)
+        SalamanderGeneral->CallLoadOrSaveConfiguration(FALSE, SftpLoadOrSaveConfigurationCallback, (void*)parent);
 }
 
 void WINAPI

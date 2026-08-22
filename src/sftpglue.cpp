@@ -4,7 +4,7 @@
 #include <string.h>
 
 CSftpConnection SftpConn;
-CSftpProfile SftpProfile = {"", 22, "", "", "", false};
+CSftpProfile SftpProfile = {"", 22, "", "", "", "", "", false, 0, false, false};
 CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 int SftpProfileCount = 0;
 char SftpDefaultSession[128] = "";
@@ -84,7 +84,7 @@ bool SftpEnsureConnected(HWND parent)
     }
     CSftpConnection::SetEncoding(SftpEncoding); // filename encoding
     if (!SftpConn.Connect(SftpProfile.Host, SftpProfile.Port, SftpProfile.User, SftpProfile.Password, SftpProfile.KeyFile,
-                          SftpProfile.UseCompression, SftpProfile.Protocol, SftpProfile.ScpFallback))
+                          SftpProfile.UseCompression, SftpProfile.Protocol, SftpProfile.ScpFallback, SftpProfile.SftpServer))
     {
         char buf[600];
         _snprintf_s(buf, _TRUNCATE, "Cannot connect to SFTP server %s:%d.\n\n%s",
@@ -174,4 +174,52 @@ bool SftpIsRoot(const char* path)
     lstrcpyn(n, path, MAX_PATH);
     SftpNormalize(n);
     return strcmp(n, "/") == 0;
+}
+
+void WrapCommandWithSftpServerPrefix(const char* sftpServer, const char* rawCmd, char* outBuf, size_t outSize)
+{
+    if (sftpServer == NULL || sftpServer[0] == 0)
+    {
+        lstrcpyn(outBuf, rawCmd, (int)outSize);
+        return;
+    }
+
+    const char* sftpPos = strstr(sftpServer, "sftp-server");
+    if (sftpPos == NULL)
+    {
+        lstrcpyn(outBuf, rawCmd, (int)outSize);
+        return;
+    }
+
+    const char* p = sftpPos;
+    while (p > sftpServer && *(p - 1) != ' ' && *(p - 1) != '\t')
+        p--;
+
+    std::string prefix(sftpServer, p - sftpServer);
+    while (!prefix.empty() && (prefix.back() == ' ' || prefix.back() == '\t'))
+        prefix.pop_back();
+
+    if (prefix.empty())
+    {
+        lstrcpyn(outBuf, rawCmd, (int)outSize);
+        return;
+    }
+
+    std::string escaped;
+    for (const char* c = rawCmd; *c; c++)
+    {
+        if (*c == '\'')
+            escaped += "'\\''";
+        else
+            escaped += *c;
+    }
+
+    if (prefix.length() >= 2 && prefix.substr(prefix.length() - 2) == "-c")
+    {
+        _snprintf_s(outBuf, outSize, _TRUNCATE, "%s '%s'", prefix.c_str(), escaped.c_str());
+    }
+    else
+    {
+        _snprintf_s(outBuf, outSize, _TRUNCATE, "%s sh -c '%s'", prefix.c_str(), escaped.c_str());
+    }
 }

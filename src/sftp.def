@@ -1,5 +1,7 @@
 LIBRARY SFTP.SPL
 
-EXPORTS SalamanderPluginEntry
-EXPORTS SalamanderPluginGetReqVer
-EXPORTS SalamanderPluginGetSDKVer
+EXPORTS
+    SalamanderPluginEntry
+    SalamanderPluginGetReqVer
+    SalamanderPluginGetSDKVer
+

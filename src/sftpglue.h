@@ -14,6 +14,8 @@ struct CSftpProfile
     char User[128];
     char Password[256];
     char KeyFile[260]; // private key (optional)
+    char Path[260];
+    char SftpServer[260]; // custom sftp-server command/path (optional, e.g. sudo su -c /usr/lib/openssh/sftp-server)
     bool UseCompression; // zlib compression
     int Protocol;        // 0 = SFTP, 1 = SCP
     bool ScpFallback;    // fallback to SCP on SFTP failure
@@ -32,6 +34,7 @@ struct CSftpSavedProfile
     char Password[256];
     char KeyFile[260];
     char Path[260];
+    char SftpServer[260];
     bool UseCompression; // zlib compression
     int Protocol;        // 0 = SFTP, 1 = SCP
     bool ScpFallback;    // emergency SCP
@@ -65,3 +68,9 @@ bool SftpInputDialog(HWND parent, const char* prompt, bool echo, char* out, int 
 void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName);
 void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction);
 void SftpCalcSize(HWND parent, const char* remoteDir, int panel);
+
+// Save configuration immediately to registry
+void SaveSftpConfigurationImmediately(HWND parent);
+
+// Wrap command line execution with custom sftp-server prefix (e.g. sudo -u hop)
+void WrapCommandWithSftpServerPrefix(const char* sftpServer, const char* rawCmd, char* outBuf, size_t outSize);

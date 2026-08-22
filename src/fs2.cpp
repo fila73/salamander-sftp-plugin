@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -650,6 +650,7 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
     {
         CSftpEntry& e = entries[i];
         CFileData file;
+        memset(&file, 0, sizeof(file));
         file.Name = SalamanderGeneral->DupStr(e.Name.c_str());
         if (file.Name == NULL)
         {
@@ -995,8 +996,10 @@ CPluginFSInterface::ExecuteCommandLine(HWND parent, char* command, int& selFrom,
     if (!SftpEnsureConnected(parent))
         return TRUE;
     // execute command in current server directory
-    char full[2 * MAX_PATH];
-    _snprintf_s(full, _TRUNCATE, "cd \"%s\" && %s", Path[0] != 0 ? Path : "/", command);
+    char raw[2 * MAX_PATH];
+    _snprintf_s(raw, _TRUNCATE, "cd \"%s\" && %s", Path[0] != 0 ? Path : "/", command);
+    char full[3 * MAX_PATH];
+    WrapCommandWithSftpServerPrefix(SftpProfile.SftpServer, raw, full, sizeof(full));
     std::string output;
     if (!SftpConn.ExecCommand(full, output))
     {

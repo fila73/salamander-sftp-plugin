@@ -3,6 +3,7 @@
 #include <ws2tcpip.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef NO_OPENSSL
 #include <openssl/bn.h>
 #include <openssl/rsa.h>
 #include <openssl/evp.h>
@@ -12,6 +13,7 @@
 #include <openssl/kdf.h>
 #include <openssl/core_names.h>
 #include <openssl/err.h>
+#endif
 
 CSftpConnection::ProgressFn CSftpConnection::Progress = nullptr;
 void* CSftpConnection::ProgressCtx = nullptr;
@@ -123,7 +125,7 @@ void CSftpConnection::SetError(const char* ctx)
 }
 
 bool CSftpConnection::Connect(const char* host, int port, const char* user, const char* password, const char* keyFile,
-                              bool useCompression, int protocol, bool scpFallback)
+                              bool useCompression, int protocol, bool scpFallback, const char* sftpServer)
 {
     Disconnect();
     ScpMode = false;
@@ -173,7 +175,11 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
         ScpMode = true;
         return true;
     }
-    Sftp = libssh2_sftp_init(Session);
+    if (sftpServer && *sftpServer)
+        Sftp = libssh2_sftp_init_ex(Session, "exec", sftpServer, (unsigned int)strlen(sftpServer));
+    else
+        Sftp = libssh2_sftp_init(Session);
+
     if (!Sftp)
     {
         if (scpFallback)
@@ -182,7 +188,7 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
             ScpMode = true;
             return true;
         }
-        ErrorMsg = "Server does not support SFTP subsystem.\nSelect SCP protocol or enable the \"Allow fallback SCP\" option.";
+        ErrorMsg = "Server does not support SFTP subsystem or failed to start custom SFTP server.\nSelect SCP protocol or enable the \"Allow fallback SCP\" option.";
         Disconnect();
         return false;
     }
@@ -426,6 +432,7 @@ static bool SshReadField(const std::vector<unsigned char>& blob, size_t& off,
     return true;
 }
 
+#ifndef NO_OPENSSL
 // base64 decoding (OpenSSL)
 static std::vector<unsigned char> B64Decode(const std::string& s)
 {
@@ -665,6 +672,12 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
     SetError(".ppk key authentication failed");
     return 0;
 }
+#else
+int CSftpConnection::TryPpkAuth(const char* /*user*/, const char* /*keyFile*/, const char* /*passphrase*/)
+{
+    return -1;
+}
+#endif
 
 bool CSftpConnection::RemoteFileSize(const char* remotePath, unsigned __int64& size)
 {

@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -209,6 +209,7 @@ static void LoadProfileToFields(HWND HWindow, const CSftpSavedProfile& p)
     SetDlgItemText(HWindow, IDC_PASSWORD, p.Password);
     SetDlgItemText(HWindow, IDC_KEYFILE, p.KeyFile);
     SetDlgItemText(HWindow, IDC_PATH, p.Path[0] != 0 ? p.Path : "/");
+    SetDlgItemText(HWindow, IDC_SFTPSERVER, p.SftpServer);
     CheckDlgButton(HWindow, IDC_SSHCOMPRESS, p.UseCompression ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(HWindow, IDC_SCPFALLBACK, p.ScpFallback ? BST_CHECKED : BST_UNCHECKED);
     SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, p.Protocol == 1 ? 1 : 0, 0);
@@ -314,6 +315,11 @@ static int ControlPage(int id)
     case IDC_SSHCOMPRESS:
     case IDC_ENCODING:
         return 3; // SSH (encryption and compression)
+    case IDC_ST_PAGE4_SFTP:
+    case IDC_ST_PAGE4_SFTPSERVER:
+    case IDC_SFTPSERVER:
+    case IDC_ST_PAGE4_SFTPSERVER_NOTE:
+        return 4; // SFTP (protocol options)
     default:
         return -1; // tree, Advanced options, buttons -> always
     }
@@ -393,6 +399,9 @@ static void BuildConnectTree(HWND tree, bool advanced)
         tvi.item.pszText = (LPSTR) "SSH";
         tvi.item.lParam = 3;
         TreeView_InsertItem(tree, &tvi);
+        tvi.item.pszText = (LPSTR) "SFTP";
+        tvi.item.lParam = 4;
+        TreeView_InsertItem(tree, &tvi);
     }
     TreeView_SelectItem(tree, hConn);
 }
@@ -436,6 +445,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         SetDlgItemText(HWindow, IDC_PASSWORD, SftpProfile.Password);
         SetDlgItemText(HWindow, IDC_KEYFILE, SftpProfile.KeyFile);
         SetDlgItemText(HWindow, IDC_PATH, ConnectPath[0] != 0 ? ConnectPath : "/");
+        SetDlgItemText(HWindow, IDC_SFTPSERVER, SftpProfile.SftpServer);
         CheckDlgButton(HWindow, IDC_SSHCOMPRESS, SftpProfile.UseCompression ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(HWindow, IDC_SCPFALLBACK, SftpProfile.ScpFallback ? BST_CHECKED : BST_UNCHECKED);
         SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, SftpProfile.Protocol == 1 ? 1 : 0, 0);
@@ -557,11 +567,14 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+static int g_SelectedProfileIndex = -1;
+
         case IDC_SESSIONS:
         {
             int sel = GetSelProfile(HWindow);
             if (sel >= 0)
             {
+                g_SelectedProfileIndex = sel;
                 if (HIWORD(wParam) == LBN_SELCHANGE)
                     LoadProfileToFields(HWindow, SftpProfiles[sel]);
                 else if (HIWORD(wParam) == LBN_DBLCLK)
@@ -576,12 +589,14 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         case IDC_SESS_NEW:
         {
             // new connection: clear fields and switch to Connection page
+            g_SelectedProfileIndex = -1;
             SetDlgItemText(HWindow, IDC_HOST, "");
             SetDlgItemText(HWindow, IDC_PORT, "22");
             SetDlgItemText(HWindow, IDC_USER, "");
             SetDlgItemText(HWindow, IDC_PASSWORD, "");
             SetDlgItemText(HWindow, IDC_KEYFILE, "");
             SetDlgItemText(HWindow, IDC_PATH, "/");
+            SetDlgItemText(HWindow, IDC_SFTPSERVER, "");
             CheckDlgButton(HWindow, IDC_SSHCOMPRESS, BST_UNCHECKED);
             CheckDlgButton(HWindow, IDC_SCPFALLBACK, BST_UNCHECKED);
             SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, 0, 0);
@@ -600,6 +615,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
                 return TRUE;
             }
+            g_SelectedProfileIndex = sel;
             LoadProfileToFields(HWindow, SftpProfiles[sel]);
             HWND tree = GetDlgItem(HWindow, IDC_CATTREE);
             TreeView_SelectItem(tree, TreeView_GetRoot(tree));
@@ -620,6 +636,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             if (SftpInputDialog(HWindow, "New connection name:", true, name, sizeof(name)) && name[0] != 0)
             {
                 lstrcpyn(SftpProfiles[sel].Name, name, sizeof(SftpProfiles[sel].Name));
+                SaveSftpConfigurationImmediately(HWindow);
                 FillSessionList(HWindow);
                 SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_SETCURSEL, sel, 0);
             }
@@ -637,6 +654,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             int sel = GetSelProfile(HWindow);
             if (sel >= 0)
                 lstrcpyn(SftpProfiles[sel].Folder, name, sizeof(SftpProfiles[sel].Folder)); // move selected to folder
+            SaveSftpConfigurationImmediately(HWindow);
             FillSessionList(HWindow);
             return TRUE;
         }
@@ -651,6 +669,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                 return TRUE;
             }
             lstrcpyn(SftpDefaultSession, SftpProfiles[sel].Name, sizeof(SftpDefaultSession));
+            SaveSftpConfigurationImmediately(HWindow);
             char msg[256];
             _snprintf_s(msg, _TRUNCATE, "Connection \"%s\" set as default.", SftpProfiles[sel].Name);
             SalamanderGeneral->SalMessageBox(HWindow, msg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
@@ -677,7 +696,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         case IDC_SAVESESSION:
         {
-            // save current fields as profile (name = user@host:port)
+            // save current fields as profile
             CSftpSavedProfile p;
             memset(&p, 0, sizeof(p));
             GetDlgItemText(HWindow, IDC_HOST, p.Host, sizeof(p.Host));
@@ -690,6 +709,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             GetDlgItemText(HWindow, IDC_PASSWORD, p.Password, sizeof(p.Password));
             GetDlgItemText(HWindow, IDC_KEYFILE, p.KeyFile, sizeof(p.KeyFile));
             GetDlgItemText(HWindow, IDC_PATH, p.Path, sizeof(p.Path));
+            GetDlgItemText(HWindow, IDC_SFTPSERVER, p.SftpServer, sizeof(p.SftpServer));
             p.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
             p.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
             p.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
@@ -700,23 +720,37 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
                 return TRUE;
             }
-            if (p.User[0] != 0)
-                _snprintf_s(p.Name, _TRUNCATE, "%s@%s:%d", p.User, p.Host, p.Port);
+
+            int targetIndex = -1;
+            if (g_SelectedProfileIndex >= 0 && g_SelectedProfileIndex < SftpProfileCount)
+            {
+                // Editing an existing profile - preserve its name and folder if not changed
+                targetIndex = g_SelectedProfileIndex;
+                lstrcpyn(p.Name, SftpProfiles[targetIndex].Name, sizeof(p.Name));
+                if (p.Folder[0] == 0 && SftpProfiles[targetIndex].Folder[0] != 0)
+                    lstrcpyn(p.Folder, SftpProfiles[targetIndex].Folder, sizeof(p.Folder));
+            }
             else
-                _snprintf_s(p.Name, _TRUNCATE, "%s:%d", p.Host, p.Port);
-            // does a profile with the same name already exist? -> overwrite
-            int found = -1;
-            for (int i = 0; i < SftpProfileCount; i++)
-                if (strcmp(SftpProfiles[i].Name, p.Name) == 0)
-                {
-                    found = i;
-                    break;
-                }
-            if (found >= 0)
-                SftpProfiles[found] = p;
+            {
+                if (p.User[0] != 0)
+                    _snprintf_s(p.Name, _TRUNCATE, "%s@%s:%d", p.User, p.Host, p.Port);
+                else
+                    _snprintf_s(p.Name, _TRUNCATE, "%s:%d", p.Host, p.Port);
+
+                // does a profile with the same name already exist? -> overwrite
+                for (int i = 0; i < SftpProfileCount; i++)
+                    if (strcmp(SftpProfiles[i].Name, p.Name) == 0)
+                    {
+                        targetIndex = i;
+                        break;
+                    }
+            }
+
+            if (targetIndex >= 0)
+                SftpProfiles[targetIndex] = p;
             else if (SftpProfileCount < SFTP_MAX_PROFILES)
             {
-                found = SftpProfileCount;
+                targetIndex = SftpProfileCount;
                 SftpProfiles[SftpProfileCount++] = p;
             }
             else
@@ -725,8 +759,11 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
                 return TRUE;
             }
+
+            g_SelectedProfileIndex = targetIndex;
+            SaveSftpConfigurationImmediately(HWindow);
             FillSessionList(HWindow);
-            SelectProfileInList(HWindow, found);
+            SelectProfileInList(HWindow, targetIndex);
             HWND tree = GetDlgItem(HWindow, IDC_CATTREE);
             HTREEITEM savedConnections = TreeView_GetNextSibling(tree, TreeView_GetRoot(tree));
             TreeView_SelectItem(tree, savedConnections);
@@ -742,6 +779,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                 for (int i = sel; i < SftpProfileCount - 1; i++)
                     SftpProfiles[i] = SftpProfiles[i + 1];
                 SftpProfileCount--;
+                g_SelectedProfileIndex = -1;
+                SaveSftpConfigurationImmediately(HWindow);
                 FillSessionList(HWindow);
             }
             return TRUE;
@@ -765,6 +804,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             GetDlgItemText(HWindow, IDC_USER, SftpProfile.User, sizeof(SftpProfile.User));
             GetDlgItemText(HWindow, IDC_PASSWORD, SftpProfile.Password, sizeof(SftpProfile.Password));
             GetDlgItemText(HWindow, IDC_KEYFILE, SftpProfile.KeyFile, sizeof(SftpProfile.KeyFile));
+            GetDlgItemText(HWindow, IDC_PATH, SftpProfile.Path, sizeof(SftpProfile.Path));
+            GetDlgItemText(HWindow, IDC_SFTPSERVER, SftpProfile.SftpServer, sizeof(SftpProfile.SftpServer));
             SftpProfile.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
             SftpProfile.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
             SftpProfile.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
@@ -1215,35 +1256,88 @@ CPluginFSDataInterface::GetPluginIcon(const CFileData* file, int iconSize, BOOL&
 }
 
 // global variable for column "get text" callbacks
-CFSData* FSdata;
-
 // callbacks called by Salamander for custom column text (see spl_com.h / FColumnGetText)
 void WINAPI GetRightsText()
 {
-    FSdata = (CFSData*)((*TransferFileData)->PluginData);
-    memcpy(TransferBuffer, FSdata->Rights, (*TransferLen = (int)strlen(FSdata->Rights)));
+    if (TransferFileData != NULL && *TransferFileData != NULL && (*TransferFileData)->PluginData != 0)
+    {
+        CFSData* data = (CFSData*)((*TransferFileData)->PluginData);
+        if (data->Rights[0] != '\0')
+        {
+            int len = (int)strlen(data->Rights);
+            if (TransferBuffer != NULL)
+            {
+                memcpy(TransferBuffer, data->Rights, len);
+                TransferBuffer[len] = '\0';
+            }
+            if (TransferLen != NULL)
+                *TransferLen = len;
+            return;
+        }
+    }
+    if (TransferLen != NULL)
+        *TransferLen = 0;
+    if (TransferBuffer != NULL)
+        TransferBuffer[0] = '\0';
 }
 
 void WINAPI GetOwnerText()
 {
-    FSdata = (CFSData*)((*TransferFileData)->PluginData);
-    memcpy(TransferBuffer, FSdata->Owner, (*TransferLen = (int)strlen(FSdata->Owner)));
+    if (TransferFileData != NULL && *TransferFileData != NULL && (*TransferFileData)->PluginData != 0)
+    {
+        CFSData* data = (CFSData*)((*TransferFileData)->PluginData);
+        if (data->Owner[0] != '\0')
+        {
+            int len = (int)strlen(data->Owner);
+            if (TransferBuffer != NULL)
+            {
+                memcpy(TransferBuffer, data->Owner, len);
+                TransferBuffer[len] = '\0';
+            }
+            if (TransferLen != NULL)
+                *TransferLen = len;
+            return;
+        }
+    }
+    if (TransferLen != NULL)
+        *TransferLen = 0;
+    if (TransferBuffer != NULL)
+        TransferBuffer[0] = '\0';
 }
 
 void WINAPI GetGroupText()
 {
-    FSdata = (CFSData*)((*TransferFileData)->PluginData);
-    memcpy(TransferBuffer, FSdata->Group, (*TransferLen = (int)strlen(FSdata->Group)));
+    if (TransferFileData != NULL && *TransferFileData != NULL && (*TransferFileData)->PluginData != 0)
+    {
+        CFSData* data = (CFSData*)((*TransferFileData)->PluginData);
+        if (data->Group[0] != '\0')
+        {
+            int len = (int)strlen(data->Group);
+            if (TransferBuffer != NULL)
+            {
+                memcpy(TransferBuffer, data->Group, len);
+                TransferBuffer[len] = '\0';
+            }
+            if (TransferLen != NULL)
+                *TransferLen = len;
+            return;
+        }
+    }
+    if (TransferLen != NULL)
+        *TransferLen = 0;
+    if (TransferBuffer != NULL)
+        TransferBuffer[0] = '\0';
 }
 
 int WINAPI PluginSimpleIconCallback()
 {
-    return *TransferIsDir ? 0 : 1;
+    return (TransferIsDir != NULL && *TransferIsDir) ? 0 : 1;
 }
 
 void AddRightsColumns(BOOL leftPanel, CSalamanderViewAbstract* view, int& i)
 {
     CColumn column;
+    memset(&column, 0, sizeof(column));
     strcpy(column.Name, "Rights");
     strcpy(column.Description, "Access permissions (rwx)");
     column.GetText = GetRightsText;
@@ -1255,6 +1349,7 @@ void AddRightsColumns(BOOL leftPanel, CSalamanderViewAbstract* view, int& i)
     column.FixedWidth = leftPanel ? LOWORD(CreatedFixedWidth) : HIWORD(CreatedFixedWidth);
     view->InsertColumn(i++, &column);
 
+    memset(&column, 0, sizeof(column));
     strcpy(column.Name, "Owner");
     strcpy(column.Description, "File owner");
     column.GetText = GetOwnerText;
@@ -1263,6 +1358,7 @@ void AddRightsColumns(BOOL leftPanel, CSalamanderViewAbstract* view, int& i)
     column.FixedWidth = leftPanel ? LOWORD(ModifiedFixedWidth) : HIWORD(ModifiedFixedWidth);
     view->InsertColumn(i++, &column);
 
+    memset(&column, 0, sizeof(column));
     strcpy(column.Name, "Group");
     strcpy(column.Description, "File group");
     column.GetText = GetGroupText;

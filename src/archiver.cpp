@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -27,13 +27,31 @@ CArcPluginDataInterface ArcPluginDataInterface;
 // see spl_com.h / FColumnGetText for details
 void WINAPI GetSzText()
 {
-    if (*TransferIsDir && !(*TransferFileData)->SizeValid)
+    if (TransferFileData != NULL && *TransferFileData != NULL)
     {
-        CopyMemory(TransferBuffer, "Dir", 3);
-        *TransferLen = 3;
+        if (TransferIsDir != NULL && *TransferIsDir && !(*TransferFileData)->SizeValid)
+        {
+            if (TransferBuffer != NULL)
+            {
+                CopyMemory(TransferBuffer, "Dir", 3);
+                TransferBuffer[3] = '\0';
+            }
+            if (TransferLen != NULL)
+                *TransferLen = 3;
+            return;
+        }
+        else if (TransferBuffer != NULL)
+        {
+            int len = sprintf(TransferBuffer, "%I64u", (*TransferFileData)->Size.Value);
+            if (TransferLen != NULL)
+                *TransferLen = len;
+            return;
+        }
     }
-    else
-        *TransferLen = sprintf(TransferBuffer, "%I64d", (*TransferFileData)->Size.Value);
+    if (TransferLen != NULL)
+        *TransferLen = 0;
+    if (TransferBuffer != NULL)
+        TransferBuffer[0] = '\0';
 }
 
 void WINAPI
@@ -58,6 +76,7 @@ CArcPluginDataInterface::SetupView(BOOL leftPanel, CSalamanderViewAbstract* view
             }
 
         CColumn column;
+        memset(&column, 0, sizeof(column));
         lstrcpy(column.Name, "Size2");
         lstrcpy(column.Description, "Size v jinem provedeni");
         column.GetText = GetSzText;
@@ -116,6 +135,7 @@ CPluginInterfaceForArchiver::ListArchive(CSalamanderForOperationsAbstract* salam
     pluginData = &ArcPluginDataInterface;
 
     CFileData file;
+    memset(&file, 0, sizeof(file));
 
     file.Name = SalamanderGeneral->DupStr("test.dop");
     if (file.Name == NULL)

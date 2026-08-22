@@ -33,8 +33,9 @@ public:
     // (with optional 'password' passphrase), otherwise password.
     // protocol: 0 = SFTP, 1 = SCP. With SFTP and 'scpFallback', automatically
     // falls back to SCP (shell + scp transfer) when SFTP subsystem is unavailable.
+    // When 'sftpServer' is non-empty, starts SFTP via custom exec command instead of default subsystem.
     bool Connect(const char* host, int port, const char* user, const char* password, const char* keyFile = nullptr,
-                 bool useCompression = false, int protocol = 0, bool scpFallback = false);
+                 bool useCompression = false, int protocol = 0, bool scpFallback = false, const char* sftpServer = nullptr);
     void Disconnect();
     bool IsConnected() const { return Sftp != nullptr || (ScpMode && Session != nullptr); }
     bool IsScpMode() const { return ScpMode; }

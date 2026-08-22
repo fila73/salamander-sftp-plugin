@@ -1,0 +1,71 @@
+CXX = x86_64-w64-mingw32-g++
+CC = x86_64-w64-mingw32-gcc
+RC = x86_64-w64-mingw32-windres
+DLLTOOL = x86_64-w64-mingw32-dlltool
+
+CXXFLAGS = -O2 -Wall -Wno-unknown-pragmas -Wno-unused-variable -Wno-unused-function -Wno-parentheses -std=c++17 \
+    -DWIN32 -D_WIN32 -D_WINDOWS -D_USRDLL -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 \
+    -D_CRT_SECURE_NO_WARNINGS -DUNICODE_NOT_USED -D_FILE_OFFSET_BITS=64 \
+    -Isrc -Isrc/lang -Isrc/libssh2/include -I../../plugins/shared -I../../
+
+CFLAGS = -O2 -Wall -Wno-unknown-pragmas -Wno-unused-variable -Wno-unused-function -Wno-parentheses \
+    -DWIN32 -D_WIN32 -D_WINDOWS -D_USRDLL -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 \
+    -D_CRT_SECURE_NO_WARNINGS \
+    -Isrc/libssh2/include
+
+LDFLAGS = -shared -s -static-libgcc -static-libstdc++ \
+    libssh2_static.a -L. -lcrypto-3-x64 \
+    -lws2_32 -lshlwapi -lcomctl32 -lcomdlg32 -lole32 -lshell32 -lgdi32 -lmsimg32 -luxtheme -ldwmapi -lbcrypt -lcrypt32
+
+CPP_SRCS = \
+    src/sftpconn.cpp \
+    src/sftpglue.cpp \
+    src/sftp.cpp \
+    src/dialogs.cpp \
+    src/fs1.cpp \
+    src/fs2.cpp \
+    src/menu.cpp \
+    src/archiver.cpp \
+    src/viewer.cpp \
+    src/thumbldr.cpp \
+    ../../plugins/shared/auxtools.cpp \
+    ../../plugins/shared/dbg.cpp \
+    ../../plugins/shared/mhandles.cpp \
+    ../../plugins/shared/winliblt.cpp \
+    ../../plugins/shared/plugindarkmode.cpp
+
+CPP_OBJS = $(CPP_SRCS:.cpp=.o)
+
+ALL_OBJS = $(CPP_OBJS) src/sftp.res
+
+all: libcrypto-3-x64.a sftp.spl English.slg Czech.slg
+
+libcrypto-3-x64.a: libcrypto.def
+	$(DLLTOOL) -d libcrypto.def -l libcrypto-3-x64.a -D libcrypto-3-x64.dll
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+src/sftp.res: src/sftp.rc
+	cd src && $(RC) -O coff -I. -Ilang -I../../../plugins/shared -I../../../ -i sftp.rc -o sftp.res
+
+src/lang/lang_en.res: src/lang/lang_en.rc
+	cd src/lang && $(RC) -O coff -I. -I.. -I../../../../plugins/shared -I../../../../ -i lang_en.rc -o lang_en.res
+
+src/lang/lang_cs.res: src/lang/lang_cs.rc
+	cd src/lang && $(RC) -O coff -I. -I.. -I../../../../plugins/shared -I../../../../ -i lang_cs.rc -o lang_cs.res
+
+sftp.spl: libssh2_static.a libcrypto-3-x64.a $(ALL_OBJS) src/sftp.def
+	$(CXX) -shared src/sftp.def $(ALL_OBJS) $(LDFLAGS) -o $@
+
+English.slg: src/lang/lang_en.res
+	$(CXX) -shared -nostdlib -Wl,-e,0 $< -o $@
+
+Czech.slg: src/lang/lang_cs.res
+	$(CXX) -shared -nostdlib -Wl,-e,0 $< -o $@
+
+clean:
+	rm -f $(CPP_OBJS) src/sftp.res src/lang/lang_en.res src/lang/lang_cs.res sftp.spl English.slg Czech.slg liblibssh2.a libcrypto-3-x64.a

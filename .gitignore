@@ -1,4 +1,5 @@
 *.obj
+*.o
 *.pch
 *.pdb
 *.exp
@@ -10,3 +11,7 @@ Debug/
 Release/
 *.user
 *.exe
+*.spl
+*.slg
+*.res
+*.a
