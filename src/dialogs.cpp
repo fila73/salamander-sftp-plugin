@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -11,9 +11,14 @@
 
 #include "precomp.h"
 #include "../../../common/winlibdpi.h"
+#include "sftpconn.h"
+#include "sftpglue.h"
+#include <string>
+#include <vector>
 
 #define GET_X_LPARAM(lp) ((int)(short)LOWORD(lp))
 #define GET_Y_LPARAM(lp) ((int)(short)HIWORD(lp))
+
 
 namespace
 {
@@ -736,3 +741,249 @@ CCtrlExampleDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return CCommonDialog::DialogProc(uMsg, wParam, lParam);
 }
+
+#define WM_USER_APPEND_TEXT (WM_USER + 410)
+#define WM_USER_EXEC_DONE   (WM_USER + 411)
+
+struct CCmdExecContext
+{
+    HWND hDlg;
+    std::string displayCmd;
+    std::string fullCmd;
+    volatile bool cancelRequested;
+    volatile bool isRunning;
+    HANDLE hThread;
+    CRITICAL_SECTION cs;
+    std::vector<std::string> pendingChunks;
+    HFONT hFont;
+    bool success;
+};
+
+static bool SftpExecStreamCallback(void* ctx, const char* data, size_t size)
+{
+    CCmdExecContext* c = (CCmdExecContext*)ctx;
+    if (!c || size == 0)
+        return true;
+
+    // Convert \n to \r\n for Windows EDIT control
+    std::string norm;
+    norm.reserve(size + size / 4);
+    for (size_t i = 0; i < size; i++)
+    {
+        if (data[i] == '\n' && (i == 0 || data[i - 1] != '\r'))
+            norm += "\r\n";
+        else
+            norm += data[i];
+    }
+
+    EnterCriticalSection(&c->cs);
+    c->pendingChunks.push_back(norm);
+    LeaveCriticalSection(&c->cs);
+
+    PostMessage(c->hDlg, WM_USER_APPEND_TEXT, 0, 0);
+    return true;
+}
+
+static DWORD WINAPI CmdExecWorkerThread(LPVOID param)
+{
+    CCmdExecContext* c = (CCmdExecContext*)param;
+    c->success = SftpConn.ExecCommandStream(c->fullCmd.c_str(), SftpExecStreamCallback, c, &c->cancelRequested);
+    PostMessage(c->hDlg, WM_USER_EXEC_DONE, 0, 0);
+    return 0;
+}
+
+static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    CCmdExecContext* ctx = (CCmdExecContext*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+
+    switch (uMsg)
+    {
+    case WM_INITDIALOG:
+    {
+        ctx = (CCmdExecContext*)lParam;
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)ctx);
+        ctx->hDlg = hDlg;
+
+        // Set info text
+        char info[512];
+        _snprintf_s(info, _TRUNCATE, "Command: %s", ctx->displayCmd.c_str());
+        SetDlgItemText(hDlg, IDC_CMD_INFO, info);
+
+        // Limit text capacity to maximum
+        SendDlgItemMessage(hDlg, IDC_CMD_OUTPUT, EM_SETLIMITTEXT, 0, 0);
+
+        // Create clean Monospace font
+        ctx->hFont = CreateFontA(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
+        if (!ctx->hFont)
+            ctx->hFont = CreateFontA(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                     CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Lucida Console");
+        if (!ctx->hFont)
+            ctx->hFont = (HFONT)GetStockObject(ANSI_FIXED_FONT);
+
+        SendDlgItemMessage(hDlg, IDC_CMD_OUTPUT, WM_SETFONT, (WPARAM)ctx->hFont, TRUE);
+
+        // Center dialog relative to parent
+        HWND parent = GetParent(hDlg);
+        if (parent)
+        {
+            RECT pr, dr;
+            GetWindowRect(parent, &pr);
+            GetWindowRect(hDlg, &dr);
+            int dw = dr.right - dr.left;
+            int dh = dr.bottom - dr.top;
+            int x = pr.left + ((pr.right - pr.left) - dw) / 2;
+            int y = pr.top + ((pr.bottom - pr.top) - dh) / 2;
+            SetWindowPos(hDlg, NULL, x > 0 ? x : 0, y > 0 ? y : 0, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        }
+
+        ctx->isRunning = true;
+        ctx->hThread = CreateThread(NULL, 0, CmdExecWorkerThread, ctx, 0, NULL);
+        return TRUE;
+    }
+
+    case WM_SIZE:
+    {
+        int w = LOWORD(lParam);
+        int h = HIWORD(lParam);
+        HWND hInfo = GetDlgItem(hDlg, IDC_CMD_INFO);
+        HWND hEdit = GetDlgItem(hDlg, IDC_CMD_OUTPUT);
+        HWND hBtn = GetDlgItem(hDlg, IDC_CMD_BTN);
+
+        if (hInfo && hEdit && hBtn)
+        {
+            SetWindowPos(hInfo, NULL, 10, 8, w - 20, 18, SWP_NOZORDER);
+            SetWindowPos(hEdit, NULL, 10, 28, w - 20, h - 70, SWP_NOZORDER);
+            SetWindowPos(hBtn, NULL, w - 100, h - 34, 90, 26, SWP_NOZORDER);
+        }
+        return TRUE;
+    }
+
+    case WM_USER_APPEND_TEXT:
+    {
+        if (!ctx) return TRUE;
+        std::vector<std::string> chunks;
+        EnterCriticalSection(&ctx->cs);
+        chunks.swap(ctx->pendingChunks);
+        LeaveCriticalSection(&ctx->cs);
+
+        if (!chunks.empty())
+        {
+            HWND hEdit = GetDlgItem(hDlg, IDC_CMD_OUTPUT);
+            for (size_t i = 0; i < chunks.size(); i++)
+            {
+                int len = GetWindowTextLength(hEdit);
+                SendMessage(hEdit, EM_SETSEL, (WPARAM)len, (LPARAM)len);
+                SendMessage(hEdit, EM_REPLACESEL, FALSE, (LPARAM)chunks[i].c_str());
+            }
+            SendMessage(hEdit, EM_SCROLLCARET, 0, 0);
+        }
+        return TRUE;
+    }
+
+    case WM_USER_EXEC_DONE:
+    {
+        if (!ctx) return TRUE;
+        // Flush remaining chunks if any
+        SendMessage(hDlg, WM_USER_APPEND_TEXT, 0, 0);
+
+        ctx->isRunning = false;
+        HWND hEdit = GetDlgItem(hDlg, IDC_CMD_OUTPUT);
+        if (GetWindowTextLength(hEdit) == 0)
+        {
+            if (!ctx->success)
+            {
+                char eb[512];
+                _snprintf_s(eb, _TRUNCATE, "Command failed:\r\n%s\r\n", SftpConn.LastError());
+                SendMessage(hEdit, EM_REPLACESEL, FALSE, (LPARAM)eb);
+            }
+            else
+            {
+                SendMessage(hEdit, EM_REPLACESEL, FALSE, (LPARAM)"(command completed with no output)\r\n");
+            }
+        }
+
+        HWND hBtn = GetDlgItem(hDlg, IDC_CMD_BTN);
+        SetWindowText(hBtn, "Close");
+        EnableWindow(hBtn, TRUE);
+        SetFocus(hBtn);
+        return TRUE;
+    }
+
+    case WM_COMMAND:
+    {
+        WORD id = LOWORD(wParam);
+        if (id == IDC_CMD_BTN || id == IDCANCEL || id == IDOK)
+        {
+            if (ctx && ctx->isRunning)
+            {
+                ctx->cancelRequested = true;
+                HWND hBtn = GetDlgItem(hDlg, IDC_CMD_BTN);
+                SetWindowText(hBtn, "Stopping...");
+                EnableWindow(hBtn, FALSE);
+            }
+            else
+            {
+                EndDialog(hDlg, IDOK);
+            }
+            return TRUE;
+        }
+        break;
+    }
+
+    case WM_CLOSE:
+    {
+        if (ctx && ctx->isRunning)
+        {
+            ctx->cancelRequested = true;
+            HWND hBtn = GetDlgItem(hDlg, IDC_CMD_BTN);
+            SetWindowText(hBtn, "Stopping...");
+            EnableWindow(hBtn, FALSE);
+        }
+        else
+        {
+            EndDialog(hDlg, IDCANCEL);
+        }
+        return TRUE;
+    }
+
+    case WM_DESTROY:
+    {
+        if (ctx && ctx->hFont)
+        {
+            DeleteObject(ctx->hFont);
+            ctx->hFont = NULL;
+        }
+        return 0;
+    }
+    }
+
+    return FALSE;
+}
+
+void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remoteFullCmd)
+{
+    CCmdExecContext ctx;
+    ctx.hDlg = NULL;
+    ctx.displayCmd = displayCmd ? displayCmd : "";
+    ctx.fullCmd = remoteFullCmd ? remoteFullCmd : "";
+    ctx.cancelRequested = false;
+    ctx.isRunning = false;
+    ctx.hThread = NULL;
+    ctx.hFont = NULL;
+    ctx.success = false;
+    InitializeCriticalSection(&ctx.cs);
+
+    SftpDialogBox(HLanguage, IDD_CMDEXEC, parent, CmdExecDlgProc, (LPARAM)&ctx);
+
+    if (ctx.hThread != NULL)
+    {
+        ctx.cancelRequested = true;
+        WaitForSingleObject(ctx.hThread, 3000);
+        CloseHandle(ctx.hThread);
+    }
+    DeleteCriticalSection(&ctx.cs);
+}
+

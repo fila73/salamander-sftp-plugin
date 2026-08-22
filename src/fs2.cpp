@@ -1000,21 +1000,10 @@ CPluginFSInterface::ExecuteCommandLine(HWND parent, char* command, int& selFrom,
     _snprintf_s(raw, _TRUNCATE, "cd \"%s\" && %s", Path[0] != 0 ? Path : "/", command);
     char full[3 * MAX_PATH];
     WrapCommandWithSftpServerPrefix(SftpProfile.SftpServer, raw, full, sizeof(full));
-    std::string output;
-    if (!SftpConn.ExecCommand(full, output))
-    {
-        char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Command failed:\n%s", SftpConn.LastError());
-        SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
-    }
-    else
-    {
-        if (output.length() > 8000)
-            output.resize(8000); // truncate long output for messagebox
-        SalamanderGeneral->SalMessageBox(parent, output.empty() ? "(command with no output)" : output.c_str(),
-                                         "Command output", MB_OK | MB_ICONINFORMATION);
-        SalamanderGeneral->PostRefreshPanelFS(this); // command may have changed content
-    }
+
+    ShowCommandExecDialog(parent, command, full);
+    SalamanderGeneral->PostRefreshPanelFS(this); // command may have changed content
+
     command[0] = 0; // vyčisti command line
     return TRUE;
 }

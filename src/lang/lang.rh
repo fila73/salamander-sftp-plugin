@@ -63,6 +63,10 @@
 #define IDC_FILECHECK                   532
 #define IDD_PROGRESSDLG                 540
 #define IDT_FILENAME                    541
+#define IDD_CMDEXEC                     610
+#define IDC_CMD_INFO                    611
+#define IDC_CMD_OUTPUT                  612
+#define IDC_CMD_BTN                     613
 #define IDP_PROGRESSBAR                 542
 #define IDD_CTRLEXAMPLE                 550
 #define IDC_CE_ST                       551

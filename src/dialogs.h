@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -13,6 +13,8 @@
 
 INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param);
 void SftpFlushDWMForInteractiveMove(const WINDOWPOS* windowPos);
+void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remoteFullCmd);
+
 
 //****************************************************************************
 //

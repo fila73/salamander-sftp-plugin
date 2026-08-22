@@ -1235,9 +1235,9 @@ bool CSftpConnection::GetSecurityInfo(std::string& out)
     return true;
 }
 
-bool CSftpConnection::ExecCommand(const char* command, std::string& output)
+bool CSftpConnection::ExecCommandStream(const char* command, ExecStreamCallback callback, void* ctx, volatile bool* cancelFlag)
 {
-    output.clear();
+    if (!Session) { SetError("Not connected"); return false; }
     LIBSSH2_CHANNEL* ch = libssh2_channel_open_session(Session);
     if (!ch) { SetError("Opening channel"); return false; }
     if (libssh2_channel_exec(ch, command))
@@ -1246,17 +1246,57 @@ bool CSftpConnection::ExecCommand(const char* command, std::string& output)
         libssh2_channel_free(ch);
         return false;
     }
-    char buf[8192];
-    ssize_t n;
-    while ((n = libssh2_channel_read(ch, buf, sizeof(buf))) > 0)
-        output.append(buf, (size_t)n);
-    // stderr
-    while ((n = libssh2_channel_read_stderr(ch, buf, sizeof(buf))) > 0)
-        output.append(buf, (size_t)n);
+
+    libssh2_session_set_blocking(Session, 0);
+
+    char buf[4096];
+    while (!cancelFlag || !*cancelFlag)
+    {
+        bool hasData = false;
+        ssize_t n = libssh2_channel_read(ch, buf, sizeof(buf));
+        if (n > 0)
+        {
+            hasData = true;
+            if (callback)
+                callback(ctx, buf, (size_t)n);
+        }
+
+        ssize_t ne = libssh2_channel_read_stderr(ch, buf, sizeof(buf));
+        if (ne > 0)
+        {
+            hasData = true;
+            if (callback)
+                callback(ctx, buf, (size_t)ne);
+        }
+
+        if (libssh2_channel_eof(ch) && n <= 0 && ne <= 0)
+            break;
+
+        if (!hasData)
+        {
+            Sleep(25);
+        }
+    }
+
+    libssh2_session_set_blocking(Session, 1);
     libssh2_channel_close(ch);
     libssh2_channel_free(ch);
     return true;
 }
+
+static bool StringAppendCallback(void* ctx, const char* data, size_t size)
+{
+    std::string* out = (std::string*)ctx;
+    out->append(data, size);
+    return true;
+}
+
+bool CSftpConnection::ExecCommand(const char* command, std::string& output)
+{
+    output.clear();
+    return ExecCommandStream(command, StringAppendCallback, &output, nullptr);
+}
+
 
 bool CSftpConnection::MakeDir(const char* remotePath)
 {

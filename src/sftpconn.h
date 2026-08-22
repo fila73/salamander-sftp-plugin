@@ -54,6 +54,10 @@ public:
     // Execute command on server (SSH exec) and return its output.
     bool ExecCommand(const char* command, std::string& output);
 
+    // Execute command on server (SSH exec) with streaming output callback and cancel flag
+    typedef bool (*ExecStreamCallback)(void* ctx, const char* data, size_t size);
+    bool ExecCommandStream(const char* command, ExecStreamCallback callback, void* ctx, volatile bool* cancelFlag);
+
     // Security information about connection (host key fingerprint, ciphers).
     bool GetSecurityInfo(std::string& out);
 
