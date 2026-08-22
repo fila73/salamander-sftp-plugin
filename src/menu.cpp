@@ -134,6 +134,28 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
 {
     switch (id)
     {
+    case MENUCMD_EXECUTEFILE:
+    {
+        CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
+        if (fs == NULL)
+            return TRUE;
+        BOOL isDir = FALSE;
+        const CFileData* f = SalamanderGeneral->GetPanelFocusedItem(PANEL_SOURCE, &isDir);
+        if (f == NULL || isDir)
+        {
+            int idx = 0;
+            f = SalamanderGeneral->GetPanelSelectedItem(PANEL_SOURCE, &idx, &isDir);
+        }
+        if (f != NULL && !isDir)
+        {
+            char cmd[MAX_PATH + 16];
+            _snprintf_s(cmd, sizeof(cmd), _TRUNCATE, "./\"%s\"", f->Name);
+            int d1 = 0, d2 = 0;
+            fs->ExecuteCommandLine(parent, cmd, d1, d2);
+        }
+        return TRUE;
+    }
+
     case MENUCMD_EDITFILE:
     {
         CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);

@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -114,6 +114,7 @@ char* LoadStr(int resID);
 #define MENUCMD_EDITFILE 20  // edit file (download -> editor -> upload back)
 #define MENUCMD_CALCSIZE 21  // calculate directory sizes on server
 #define MENUCMD_SYNC 22      // synchronize directory with local
+#define MENUCMD_EXECUTEFILE 23 // execute file on server (./filename)
 
 //
 // ****************************************************************************

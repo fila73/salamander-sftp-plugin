@@ -1,4 +1,4 @@
-﻿//****************************************************************************
+//****************************************************************************
 //
 // Copyright (c) 2023 Open Salamander Authors
 //
@@ -28,6 +28,7 @@
 #define IDS_CFG_TITLE          54
 #define IDS_INVALID_NUM        55
 #define IDS_DOP_FILES_FILTER   56
+#define IDS_MENU_EXECUTE       57
 
 #define IDI_DIR           1000
 #define IDI_FILE          1001

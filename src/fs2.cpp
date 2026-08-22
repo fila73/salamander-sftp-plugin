@@ -2208,6 +2208,34 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
     {
         int i = 0;
 
+        // Insert custom SFTP commands at top of context menu
+        BOOL isDir = FALSE;
+        const CFileData* focusedFile = SalamanderGeneral->GetPanelFocusedItem(panel, &isDir);
+        if (focusedFile == NULL || isDir)
+        {
+            int idx = 0;
+            focusedFile = SalamanderGeneral->GetPanelSelectedItem(panel, &idx, &isDir);
+        }
+        if (focusedFile != NULL && !isDir)
+        {
+            memset(&mi, 0, sizeof(mi));
+            mi.cbSize = sizeof(mi);
+            mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
+            mi.fType = MFT_STRING;
+            mi.wID = MENUCMD_EXECUTEFILE;
+            lstrcpyn(nameBuf, LoadStr(IDS_MENU_EXECUTE), sizeof(nameBuf));
+            mi.dwTypeData = nameBuf;
+            mi.cch = (UINT)strlen(nameBuf);
+            mi.fState = MFS_ENABLED;
+            InsertMenuItem(menu, i++, TRUE, &mi);
+
+            memset(&mi, 0, sizeof(mi));
+            mi.cbSize = sizeof(mi);
+            mi.fMask = MIIM_TYPE;
+            mi.fType = MFT_SEPARATOR;
+            InsertMenuItem(menu, i++, TRUE, &mi);
+        }
+
         int index = 0;
         int salCmd;
         BOOL enabled;
@@ -2237,7 +2265,11 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
         }
         DWORD cmd = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON,
                                      menuX, menuY, parent, NULL);
-        if (cmd >= 1000) // the user selected a Salamander command
+        if (cmd == MENUCMD_EXECUTEFILE)
+        {
+            SalamanderGeneral->PostMenuExtCommand(MENUCMD_EXECUTEFILE, TRUE);
+        }
+        else if (cmd >= 1000) // the user selected a Salamander command
         {
             if (SalamanderGeneral->GetSalamanderCommand(cmd - 1000, nameBuf, 200, &enabled, &type2))
                 TRACE_I("Starting command: " << nameBuf);
