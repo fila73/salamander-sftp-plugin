@@ -17,7 +17,7 @@ CFLAGS = -O2 -Wall -Wno-unknown-pragmas -Wno-unused-variable -Wno-unused-functio
     -D_CRT_SECURE_NO_WARNINGS \
     -Isrc/libssh2/include
 
-LDFLAGS = -shared -s -static-libgcc -static-libstdc++ \
+LDFLAGS = -shared -s -static-libgcc -static-libstdc++ -static \
     libssh2_static.a -L. -lcrypto-3-x64 \
     -lws2_32 -lshlwapi -lcomctl32 -lcomdlg32 -lole32 -lshell32 -lgdi32 -lmsimg32 -luxtheme -ldwmapi -lbcrypt -lcrypt32
 
