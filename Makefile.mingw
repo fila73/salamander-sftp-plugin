@@ -1,7 +1,8 @@
-CXX = x86_64-w64-mingw32-g++
-CC = x86_64-w64-mingw32-gcc
-RC = x86_64-w64-mingw32-windres
-DLLTOOL = x86_64-w64-mingw32-dlltool
+CXX = g++
+CC = gcc
+AR = ar
+RC = windres
+DLLTOOL = dlltool
 
 SALAMAND_DIR = ../salamander-plugins/salamand
 SHARED_DIR = ../salamander-plugins/salamand/plugins/shared
@@ -19,6 +20,42 @@ CFLAGS = -O2 -Wall -Wno-unknown-pragmas -Wno-unused-variable -Wno-unused-functio
 LDFLAGS = -shared -s -static-libgcc -static-libstdc++ \
     libssh2_static.a -L. -lcrypto-3-x64 \
     -lws2_32 -lshlwapi -lcomctl32 -lcomdlg32 -lole32 -lshell32 -lgdi32 -lmsimg32 -luxtheme -ldwmapi -lbcrypt -lcrypt32
+
+# libssh2 static library (OpenSSL backend)
+LIBSSH2_CFLAGS = -O2 -Wall -Wno-unused-variable -Wno-unused-function \
+    -DWIN32 -D_WIN32 -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 \
+    -DLIBSSH2_OPENSSL -DLIBSSH2_MD5_ENABLE -DLIBSSH2_DSA_ENABLE \
+    -Isrc/libssh2/include -Isrc/libssh2 -Isrc
+
+LIBSSH2_SRCS = \
+    src/libssh2/agent.c \
+    src/libssh2/bcrypt_pbkdf.c \
+    src/libssh2/chacha.c \
+    src/libssh2/channel.c \
+    src/libssh2/cipher-chachapoly.c \
+    src/libssh2/comp.c \
+    src/libssh2/crypt.c \
+    src/libssh2/global.c \
+    src/libssh2/hostkey.c \
+    src/libssh2/keepalive.c \
+    src/libssh2/kex.c \
+    src/libssh2/knownhost.c \
+    src/libssh2/mac.c \
+    src/libssh2/misc.c \
+    src/libssh2/openssl.c \
+    src/libssh2/packet.c \
+    src/libssh2/pem.c \
+    src/libssh2/poly1305.c \
+    src/libssh2/publickey.c \
+    src/libssh2/scp.c \
+    src/libssh2/session.c \
+    src/libssh2/sftp.c \
+    src/libssh2/transport.c \
+    src/libssh2/userauth.c \
+    src/libssh2/userauth_kbd_packet.c \
+    src/libssh2/version.c
+
+LIBSSH2_OBJS = $(LIBSSH2_SRCS:.c=.o)
 
 CPP_SRCS = \
     src/sftpconn.cpp \
@@ -41,10 +78,16 @@ CPP_OBJS = $(CPP_SRCS:.cpp=.o)
 
 ALL_OBJS = $(CPP_OBJS) src/sftp.res
 
-all: libcrypto-3-x64.a sftp.spl english.slg czech.slg
+all: libcrypto-3-x64.a libssh2_static.a sftp.spl english.slg czech.slg
 
-libcrypto-3-x64.a: libcrypto.def
-	$(DLLTOOL) -d libcrypto.def -l libcrypto-3-x64.a -D libcrypto-3-x64.dll
+libcrypto-3-x64.a: libcrypto-3-x64.def
+	$(DLLTOOL) -d libcrypto-3-x64.def -l libcrypto-3-x64.a -D libcrypto-3-x64.dll
+
+src/libssh2/%.o: src/libssh2/%.c
+	$(CC) $(LIBSSH2_CFLAGS) -c $< -o $@
+
+libssh2_static.a: $(LIBSSH2_OBJS)
+	$(AR) rcs $@ $^
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -71,4 +114,6 @@ czech.slg: src/lang/lang_cs.res
 	$(CXX) -shared -nostdlib -Wl,-e,0 $< -o $@
 
 clean:
-	rm -f $(CPP_OBJS) src/sftp.res src/lang/lang_en.res src/lang/lang_cs.res sftp.spl english.slg czech.slg liblibssh2.a libcrypto-3-x64.a
+	-del /Q /F $(subst /,\,$(CPP_OBJS)) $(subst /,\,$(LIBSSH2_OBJS)) 2>nul
+	-del /Q /F src\sftp.res src\lang\lang_en.res src\lang\lang_cs.res 2>nul
+	-del /Q /F sftp.spl english.slg czech.slg libssh2_static.a libcrypto-3-x64.a 2>nul
