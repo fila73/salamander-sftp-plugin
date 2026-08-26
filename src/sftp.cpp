@@ -96,6 +96,23 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
     {
         DLLInstance = hinstDLL;
 
+        // Pre-load bundled 64-bit libcrypto and libssh2 DLLs from this plugin's directory
+        // with LOAD_WITH_ALTERED_SEARCH_PATH so that any 32-bit libssh2/libcrypto in PATH (e.g. Nmap) is ignored!
+        char path[MAX_PATH];
+        if (GetModuleFileNameA(hinstDLL, path, MAX_PATH) > 0)
+        {
+            char* slash = strrchr(path, '\\');
+            if (slash != NULL)
+            {
+                const char* dlls[] = {"libcrypto-3-x64.dll", "libssh2.dll"};
+                for (int i = 0; i < 2; i++)
+                {
+                    strcpy(slash + 1, dlls[i]);
+                    LoadLibraryExA(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+                }
+            }
+        }
+
         INITCOMMONCONTROLSEX initCtrls;
         initCtrls.dwSize = sizeof(INITCOMMONCONTROLSEX);
         initCtrls.dwICC = ICC_BAR_CLASSES;
@@ -376,7 +393,7 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
 
     // this plugin targets the current Salamander version and newer - perform a check
 #ifdef SFTP_COMPATIBLE_WITH_500
-    if (SalamanderVersion < 103) // plugin works in Open Salamander 5.0 or later
+    if (SalamanderVersion < 102) // plugin works in Altap Salamander 4.x or later
 #else                            // SFTP_COMPATIBLE_WITH_500
     if (SalamanderVersion < LAST_VERSION_OF_SALAMANDER)
 #endif                           // SFTP_COMPATIBLE_WITH_500
@@ -398,7 +415,6 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
 
     // obtain the general Salamander interface
     SalamanderGeneral = salamander->GetSalamanderGeneral();
-    InitializeWinLibDialogFont(SalamanderGeneral);
 #ifdef USE_DARKMODELIB
     InitializeWinLibDarkMode(SalamanderGeneral);
 #endif // USE_DARKMODELIB

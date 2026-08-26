@@ -10,7 +10,6 @@
 //****************************************************************************
 
 #include "precomp.h"
-#include "../../../common/winlibdpi.h"
 #include "sftpconn.h"
 #include "sftpglue.h"
 #include <string>
@@ -48,19 +47,7 @@ void SftpFlushDWMForInteractiveMove(const WINDOWPOS* windowPos)
 
 INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param)
 {
-    LOGFONT logFont;
-    BYTE* dialogTemplate = NULL;
-    if (WinLibGetDefaultUILogFont(parent, &logFont))
-    {
-        dialogTemplate = WinLibDPICloneResourceDialogWithFont(module, resID, &logFont,
-                                                               WinLibDPIGetWindowDPI(parent), NULL);
-    }
-
-    INT_PTR result = dialogTemplate != NULL
-                         ? DialogBoxIndirectParamW(module, (LPCDLGTEMPLATEW)dialogTemplate, parent, proc, param)
-                         : DialogBoxParamW(module, MAKEINTRESOURCEW(resID), parent, proc, param);
-    WinLibDPIFreeDialogTemplate(dialogTemplate);
-    return result;
+    return DialogBoxParamW(module, MAKEINTRESOURCEW(resID), parent, proc, param);
 }
 
 //****************************************************************************

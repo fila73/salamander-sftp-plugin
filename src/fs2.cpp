@@ -1421,22 +1421,44 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
                     : SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir);
         if (f == NULL)
             break;
-        char remote[MAX_PATH];
-        SftpJoin(remoteDir, f->Name, remote, MAX_PATH);
-        if (isDir)
+        if (strcmp(f->Name, "..") != 0)
         {
-            dirs++;
-            total += SftpDirSize(remote, files, dirs);
-        }
-        else
-        {
-            files++;
-            total += f->Size.Value;
+            char remote[MAX_PATH];
+            SftpJoin(remoteDir, f->Name, remote, MAX_PATH);
+            if (isDir)
+            {
+                dirs++;
+                int subFiles = 0, subDirs = 0;
+                unsigned __int64 dirSize = SftpDirSize(remote, subFiles, subDirs);
+                files += subFiles;
+                dirs += subDirs;
+                total += dirSize;
+
+                CFileData* nonConstF = const_cast<CFileData*>(f);
+                nonConstF->Size.SetUI64(dirSize);
+                nonConstF->SizeValid = 1;
+                nonConstF->Dirty = 1;
+            }
+            else
+            {
+                files++;
+                total += f->Size.Value;
+            }
         }
         if (focused)
             break;
     }
     SetCursor(oldCur);
+
+    SalamanderGeneral->RepaintChangedItems(panel);
+
+    HWND hFocus = GetFocus();
+    if (hFocus != NULL)
+    {
+        InvalidateRect(hFocus, NULL, TRUE);
+        UpdateWindow(hFocus);
+    }
+
     char info[400];
     _snprintf_s(info, _TRUNCATE,
                 "Size: %I64u bytes (%.2f MB)\nFiles: %d\nDirectories: %d",
@@ -2035,14 +2057,12 @@ static INT_PTR CALLBACK ChmodDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
     case WM_INITDIALOG:
     {
-        WinLibApplyDialogFont(hwnd);
         HWND par = GetParent(hwnd);
         if (par != NULL)
             SalamanderGeneral->MultiMonCenterWindow(hwnd, par, TRUE);
         char b[16];
         _snprintf_s(b, _TRUNCATE, "%o", g_ChmodOctal & 0777);
         SetDlgItemText(hwnd, IDC_CHMODVAL, b);
-        WinLibApplyDialogFont(hwnd);
         return TRUE;
     }
     case WM_COMMAND:

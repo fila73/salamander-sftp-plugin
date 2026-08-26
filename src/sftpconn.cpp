@@ -176,7 +176,14 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
         return true;
     }
     if (sftpServer && *sftpServer)
-        Sftp = libssh2_sftp_init_ex(Session, "exec", sftpServer, (unsigned int)strlen(sftpServer));
+    {
+        typedef LIBSSH2_SFTP* (*pfn_sftp_init_ex)(LIBSSH2_SESSION*, const char*, const char*, unsigned int);
+        pfn_sftp_init_ex fnInitEx = (pfn_sftp_init_ex)GetProcAddress(GetModuleHandleA("libssh2.dll"), "libssh2_sftp_init_ex");
+        if (fnInitEx)
+            Sftp = fnInitEx(Session, "exec", sftpServer, (unsigned int)strlen(sftpServer));
+        else
+            Sftp = libssh2_sftp_init(Session);
+    }
     else
         Sftp = libssh2_sftp_init(Session);
 

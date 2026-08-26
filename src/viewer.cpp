@@ -167,7 +167,7 @@ void WINAPI HTMLHelpCallback(HWND hWindow, UINT helpID)
 
 BOOL InitViewer()
 {
-    if (!InitializeWinLib(PluginNameEN, DLLInstance, SalamanderGeneral))
+    if (!InitializeWinLib(PluginNameEN, DLLInstance))
         return FALSE;
     SetWinLibStrings(LoadStr(IDS_INVALID_NUM), LoadStr(IDS_PLUGINNAME));
     SetupWinLibHelp(HTMLHelpCallback);
