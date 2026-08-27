@@ -829,12 +829,12 @@ static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPAR
 
         SendDlgItemMessage(hDlg, IDC_CMD_OUTPUT, WM_SETFONT, (WPARAM)ctx->hFont, TRUE);
 
-        // Center dialog relative to parent
-        HWND parent = GetParent(hDlg);
-        if (parent)
+        // Center dialog relative to Salamander main window
+        HWND parentWnd = SalamanderGeneral ? SalamanderGeneral->GetMainWindowHWND() : NULL;
+        if (parentWnd)
         {
             RECT pr, dr;
-            GetWindowRect(parent, &pr);
+            GetWindowRect(parentWnd, &pr);
             GetWindowRect(hDlg, &dr);
             int dw = dr.right - dr.left;
             int dh = dr.bottom - dr.top;
@@ -1008,10 +1008,20 @@ void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remo
     ctx->success = false;
     InitializeCriticalSection(&ctx->cs);
 
-    HWND hDlg = CreateDialogParamW(HLanguage, MAKEINTRESOURCEW(IDD_CMDEXEC), parent, CmdExecDlgProc, (LPARAM)ctx);
+    // Ensure Salamander windows are enabled in case host disabled them for operation
+    HWND hMain = SalamanderGeneral ? SalamanderGeneral->GetMainWindowHWND() : parent;
+    if (hMain != NULL)
+        EnableWindow(hMain, TRUE);
+    if (parent != NULL && parent != hMain)
+        EnableWindow(parent, TRUE);
+
+    // Create as independent top-level unowned window (NULL parent prevents modal-like owner lock)
+    HWND hDlg = CreateDialogParamW(HLanguage, MAKEINTRESOURCEW(IDD_CMDEXEC), NULL, CmdExecDlgProc, (LPARAM)ctx);
     if (hDlg != NULL)
     {
+        SetWindowLongPtr(hDlg, GWL_EXSTYLE, GetWindowLongPtr(hDlg, GWL_EXSTYLE) | WS_EX_APPWINDOW);
         ShowWindow(hDlg, SW_SHOW);
+        SetForegroundWindow(hDlg);
     }
     else
     {
