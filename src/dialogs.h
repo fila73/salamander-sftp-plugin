@@ -13,7 +13,9 @@
 
 INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param);
 void SftpFlushDWMForInteractiveMove(const WINDOWPOS* windowPos);
-void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remoteFullCmd);
+struct CSftpProfile;
+class CPluginFSInterfaceAbstract;
+void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remoteFullCmd, const CSftpProfile& profile, CPluginFSInterfaceAbstract* fs);
 
 
 //****************************************************************************

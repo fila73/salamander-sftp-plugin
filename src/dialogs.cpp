@@ -737,6 +737,8 @@ struct CCmdExecContext
     HWND hDlg;
     std::string displayCmd;
     std::string fullCmd;
+    CSftpProfile profile;
+    CPluginFSInterfaceAbstract* fs;
     volatile bool cancelRequested;
     volatile bool isRunning;
     HANDLE hThread;
@@ -744,6 +746,7 @@ struct CCmdExecContext
     std::vector<std::string> pendingChunks;
     HFONT hFont;
     bool success;
+    std::string errorMsg;
 };
 
 static bool SftpExecStreamCallback(void* ctx, const char* data, size_t size)
@@ -774,7 +777,21 @@ static bool SftpExecStreamCallback(void* ctx, const char* data, size_t size)
 static DWORD WINAPI CmdExecWorkerThread(LPVOID param)
 {
     CCmdExecContext* c = (CCmdExecContext*)param;
-    c->success = SftpConn.ExecCommandStream(c->fullCmd.c_str(), SftpExecStreamCallback, c, &c->cancelRequested);
+    CSftpConnection conn;
+    // Dedicated SSH connection using profile credentials (protocol 1 = pure SSH/SCP mode without SFTP init)
+    if (conn.Connect(c->profile.Host, c->profile.Port, c->profile.User, c->profile.Password, c->profile.KeyFile,
+                     c->profile.UseCompression, 1, false, nullptr))
+    {
+        c->success = conn.ExecCommandStream(c->fullCmd.c_str(), SftpExecStreamCallback, c, &c->cancelRequested);
+        if (!c->success)
+            c->errorMsg = conn.LastError();
+        conn.Disconnect();
+    }
+    else
+    {
+        c->success = false;
+        c->errorMsg = conn.LastError();
+    }
     PostMessage(c->hDlg, WM_USER_EXEC_DONE, 0, 0);
     return 0;
 }
@@ -883,7 +900,7 @@ static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPAR
             if (!ctx->success)
             {
                 char eb[512];
-                _snprintf_s(eb, _TRUNCATE, "Command failed:\r\n%s\r\n", SftpConn.LastError());
+                _snprintf_s(eb, _TRUNCATE, "Command failed:\r\n%s\r\n", ctx->errorMsg.c_str());
                 SendMessage(hEdit, EM_REPLACESEL, FALSE, (LPARAM)eb);
             }
             else
@@ -896,6 +913,11 @@ static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPAR
         SetWindowText(hBtn, "Close");
         EnableWindow(hBtn, TRUE);
         SetFocus(hBtn);
+
+        // Notify Salamander panel to refresh
+        if (ctx->fs && SalamanderGeneral)
+            SalamanderGeneral->PostRefreshPanelFS(ctx->fs);
+
         return TRUE;
     }
 
@@ -913,7 +935,7 @@ static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPAR
             }
             else
             {
-                EndDialog(hDlg, IDOK);
+                DestroyWindow(hDlg);
             }
             return TRUE;
         }
@@ -931,7 +953,7 @@ static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPAR
         }
         else
         {
-            EndDialog(hDlg, IDCANCEL);
+            DestroyWindow(hDlg);
         }
         return TRUE;
     }
@@ -945,36 +967,56 @@ static INT_PTR CALLBACK CmdExecDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPAR
         }
         return 0;
     }
+
+    case WM_NCDESTROY:
+    {
+        if (ctx)
+        {
+            if (ctx->hThread != NULL)
+            {
+                ctx->cancelRequested = true;
+                if (WaitForSingleObject(ctx->hThread, 500) == WAIT_TIMEOUT)
+                {
+                    TerminateThread(ctx->hThread, 0);
+                }
+                CloseHandle(ctx->hThread);
+                ctx->hThread = NULL;
+            }
+            DeleteCriticalSection(&ctx->cs);
+            delete ctx;
+        }
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
+        return 0;
+    }
     }
 
     return FALSE;
 }
 
-void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remoteFullCmd)
+void ShowCommandExecDialog(HWND parent, const char* displayCmd, const char* remoteFullCmd, const CSftpProfile& profile, CPluginFSInterfaceAbstract* fs)
 {
-    CCmdExecContext ctx;
-    ctx.hDlg = NULL;
-    ctx.displayCmd = displayCmd ? displayCmd : "";
-    ctx.fullCmd = remoteFullCmd ? remoteFullCmd : "";
-    ctx.cancelRequested = false;
-    ctx.isRunning = false;
-    ctx.hThread = NULL;
-    ctx.hFont = NULL;
-    ctx.success = false;
-    InitializeCriticalSection(&ctx.cs);
+    CCmdExecContext* ctx = new CCmdExecContext();
+    ctx->hDlg = NULL;
+    ctx->displayCmd = displayCmd ? displayCmd : "";
+    ctx->fullCmd = remoteFullCmd ? remoteFullCmd : "";
+    ctx->profile = profile;
+    ctx->fs = fs;
+    ctx->cancelRequested = false;
+    ctx->isRunning = false;
+    ctx->hThread = NULL;
+    ctx->hFont = NULL;
+    ctx->success = false;
+    InitializeCriticalSection(&ctx->cs);
 
-    SftpDialogBox(HLanguage, IDD_CMDEXEC, parent, CmdExecDlgProc, (LPARAM)&ctx);
-
-    if (ctx.hThread != NULL)
+    HWND hDlg = CreateDialogParamW(HLanguage, MAKEINTRESOURCEW(IDD_CMDEXEC), parent, CmdExecDlgProc, (LPARAM)ctx);
+    if (hDlg != NULL)
     {
-        ctx.cancelRequested = true;
-        if (WaitForSingleObject(ctx.hThread, 500) == WAIT_TIMEOUT)
-        {
-            TerminateThread(ctx.hThread, 0);
-        }
-        CloseHandle(ctx.hThread);
-        ctx.hThread = NULL;
+        ShowWindow(hDlg, SW_SHOW);
     }
-    DeleteCriticalSection(&ctx.cs);
+    else
+    {
+        DeleteCriticalSection(&ctx->cs);
+        delete ctx;
+    }
 }
 

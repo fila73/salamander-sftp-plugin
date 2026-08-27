@@ -1001,9 +1001,7 @@ CPluginFSInterface::ExecuteCommandLine(HWND parent, char* command, int& selFrom,
     char full[3 * MAX_PATH];
     WrapCommandWithSftpServerPrefix(SftpProfile.SftpServer, raw, full, sizeof(full));
 
-    ShowCommandExecDialog(parent, command, full);
-    SalamanderGeneral->PostRefreshPanelFS(this); // command may have changed content
-
+    ShowCommandExecDialog(parent, command, full, SftpProfile, this);
     command[0] = 0; // vyčisti command line
     return TRUE;
 }
