@@ -15,3 +15,5 @@ Release/
 *.slg
 *.res
 *.a
+.idea/
+.vscode/

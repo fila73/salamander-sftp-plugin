@@ -810,8 +810,6 @@ static int g_SelectedProfileIndex = -1;
                     SftpEncoding = e;
             }
             GetDlgItemText(HWindow, IDC_PATH, ConnectPath, MAX_PATH);
-            if (ConnectPath[0] == 0)
-                strcpy(ConnectPath, "/");
             if (SftpProfile.Host[0] == 0)
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Enter server address (host).",

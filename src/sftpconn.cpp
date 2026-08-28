@@ -177,12 +177,7 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     }
     if (sftpServer && *sftpServer)
     {
-        typedef LIBSSH2_SFTP* (*pfn_sftp_init_ex)(LIBSSH2_SESSION*, const char*, const char*, unsigned int);
-        pfn_sftp_init_ex fnInitEx = (pfn_sftp_init_ex)GetProcAddress(GetModuleHandleA("libssh2.dll"), "libssh2_sftp_init_ex");
-        if (fnInitEx)
-            Sftp = fnInitEx(Session, "exec", sftpServer, (unsigned int)strlen(sftpServer));
-        else
-            Sftp = libssh2_sftp_init(Session);
+        Sftp = libssh2_sftp_init_ex(Session, "exec", sftpServer, (unsigned int)strlen(sftpServer));
     }
     else
         Sftp = libssh2_sftp_init(Session);
@@ -988,6 +983,8 @@ int CSftpConnection::PathType(const char* remotePath)
 {
     std::string _rp = ToServerEnc(remotePath);
     remotePath = _rp.c_str();
+    if (strcmp(remotePath, "/") == 0)
+        return 2;
     if (ScpMode)
     {
         std::string q = ShellQuote(remotePath);
@@ -1006,6 +1003,26 @@ int CSftpConnection::PathType(const char* remotePath)
     if ((a.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && LIBSSH2_SFTP_S_ISDIR(a.permissions))
         return 2;
     return 1;
+}
+
+bool CSftpConnection::GetHomeDir(std::string& homeDir)
+{
+    if (!IsConnected()) return false;
+    if (ScpMode)
+    {
+        homeDir = "/";
+        return true;
+    }
+    char buf[1024];
+    int rc = libssh2_sftp_realpath(Sftp, ".", buf, sizeof(buf));
+    if (rc > 0)
+    {
+        buf[rc < (int)sizeof(buf) ? rc : (sizeof(buf) - 1)] = 0;
+        homeDir = ToDisplayEnc(buf);
+        return true;
+    }
+    homeDir = "/";
+    return true;
 }
 
 bool CSftpConnection::Chmod(const char* remotePath, unsigned long mode)

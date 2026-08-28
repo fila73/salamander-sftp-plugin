@@ -519,8 +519,11 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         *pathWasCut = FALSE;
     if (cutFileName != NULL)
         *cutFileName = 0;
-    FatalError = FALSE;
-    PathError = FALSE;
+    if (FatalError)
+    {
+        FatalError = FALSE;
+        return FALSE;
+    }
 
     HWND parent = SalamanderGeneral->GetMsgBoxParent();
 
@@ -537,8 +540,16 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         lstrcpyn(path, ConnectData.UserPart, MAX_PATH);
     else
         lstrcpyn(path, SftpStripHost(userPart), MAX_PATH);
+
     if (path[0] == 0)
-        strcpy(path, "/");
+    {
+        std::string home;
+        if (SftpConn.GetHomeDir(home) && !home.empty())
+            lstrcpyn(path, home.c_str(), MAX_PATH);
+        else
+            strcpy(path, "/");
+    }
+
     // join relative path to current
     if (path[0] != '/')
     {
@@ -547,6 +558,23 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         lstrcpyn(path, joined, MAX_PATH);
     }
     SftpNormalize(path);
+
+    if (PathError)
+    {
+        PathError = FALSE;
+        char parentPath[MAX_PATH];
+        SftpParent(path, parentPath, MAX_PATH);
+        if (SftpIsSamePath(path, parentPath) || SftpIsRoot(path))
+        {
+            char msg[2 * MAX_PATH];
+            _snprintf_s(msg, _TRUNCATE, "Cannot list directory:\n%s:%s\n%s", fsName, path, SftpConn.LastError());
+            SalamanderGeneral->SalMessageBox(parent, msg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
+            return FALSE;
+        }
+        lstrcpyn(path, parentPath, MAX_PATH);
+        if (pathWasCut != NULL)
+            *pathWasCut = TRUE;
+    }
 
     BOOL fileNameAlreadyCut = FALSE;
     while (1)
@@ -559,7 +587,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         }
         // file or not found -> trim last component
         const char* slash = strrchr(path, '/');
-        if (slash == NULL || slash == path) // already at root and it's not a directory -> fatal
+        if (slash == NULL || slash == path || SftpIsRoot(path)) // already at root and it's not a directory -> fatal
         {
             char msg[2 * MAX_PATH];
             _snprintf_s(msg, _TRUNCATE, "Path does not exist or is not a directory:\n%s:%s", fsName, userPart);
@@ -614,9 +642,10 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
     }
     iconsType = pitFromRegistry; // icons by extension from registry (.pdf, .txt, ...)
 
+    dir->SetFlags(SALDIRFLAG_IGNOREDUPDIRS);
     dir->SetValidData(VALID_DATA_EXTENSION | VALID_DATA_SIZE | VALID_DATA_TYPE |
                       VALID_DATA_DATE | VALID_DATA_TIME | VALID_DATA_ATTRIBUTES |
-                      VALID_DATA_HIDDEN);
+                      VALID_DATA_HIDDEN | VALID_DATA_ISLINK);
 
     int sortByExtDirsAsFiles;
     SalamanderGeneral->GetConfigParameter(SALCFG_SORTBYEXTDIRSASFILES, &sortByExtDirsAsFiles,

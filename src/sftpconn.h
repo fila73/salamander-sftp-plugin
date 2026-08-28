@@ -69,6 +69,9 @@ public:
     // Path type: 0 = does not exist, 1 = file, 2 = directory.
     int PathType(const char* remotePath);
 
+    // Get remote default / home directory (resolved via realpath ".")
+    bool GetHomeDir(std::string& homeDir);
+
     // Change unix permissions (chmod). mode = posix permissions (e.g. 0755).
     bool Chmod(const char* remotePath, unsigned long mode);
     // Load current permissions. Returns false on error.
