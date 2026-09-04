@@ -45,6 +45,7 @@ Vše se vyjednává automaticky dle možností serveru:
 
 ### Správa připojení a UI
 - Přihlašovací dialog se stromem relací ve stylu WinSCP (Nová relace / Upravit / Smazat / Přejmenovat / Výchozí)
+- **Udržování spojení a stabilita**: TCP a SSH keepalive pakety (15 s) zabraňují odpojení nečinných relací; transparentní detekce živosti socketu a auto-reconnect
 - Zobrazení/skrytí hesla (ikona oka)
 - Podpora tmavého režimu (Dark Mode) sjednoceného se Salamanderem
 - Jazyková lokalizace (`.slg` moduly pro češtinu, angličtinu i ostatní jazyky Salamandera)

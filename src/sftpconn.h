@@ -37,7 +37,7 @@ public:
     bool Connect(const char* host, int port, const char* user, const char* password, const char* keyFile = nullptr,
                  bool useCompression = false, int protocol = 0, bool scpFallback = false, const char* sftpServer = nullptr);
     void Disconnect();
-    bool IsConnected() const { return Sftp != nullptr || (ScpMode && Session != nullptr); }
+    bool IsConnected() const;
     bool IsScpMode() const { return ScpMode; }
 
     // List directory (remotePath in "/" or "/dir/sub" style).

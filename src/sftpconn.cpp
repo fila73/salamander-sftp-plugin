@@ -1,6 +1,7 @@
 // Copyright © 2026 Dupl3xx
 #include "sftpconn.h"
 #include <ws2tcpip.h>
+#include <mstcpip.h>
 #include <stdio.h>
 #include <stdlib.h>
 #ifndef NO_OPENSSL
@@ -150,6 +151,16 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     }
     freeaddrinfo(res);
 
+    // Enable TCP keepalive to prevent NAT / firewall timeouts during idle
+    BOOL optval = TRUE;
+    setsockopt(Sock, SOL_SOCKET, SO_KEEPALIVE, (const char*)&optval, sizeof(optval));
+    struct tcp_keepalive ka;
+    ka.onoff = 1;
+    ka.keepalivetime = 15000;    // send probe after 15s idle
+    ka.keepaliveinterval = 5000; // probe interval 5s
+    DWORD bytesReturned = 0;
+    WSAIoctl(Sock, SIO_KEEPALIVE_VALS, &ka, sizeof(ka), NULL, 0, &bytesReturned, NULL, NULL);
+
     Session = libssh2_session_init();
     if (!Session) { ErrorMsg = "libssh2_session_init failed."; Disconnect(); return false; }
     libssh2_session_set_blocking(Session, 1);
@@ -162,6 +173,9 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     }
 
     if (libssh2_session_handshake(Session, Sock)) { SetError("SSH handshake"); Disconnect(); return false; }
+
+    // Enable SSH keepalive (every 15s)
+    libssh2_keepalive_config(Session, 1, 15);
 
     // host key verification (known_hosts + user prompt)
     if (!VerifyHostKey(host, port)) { Disconnect(); return false; }
@@ -208,6 +222,52 @@ void CSftpConnection::Disconnect()
         Session = nullptr;
     }
     if (Sock != INVALID_SOCKET) { closesocket(Sock); Sock = INVALID_SOCKET; }
+}
+
+bool CSftpConnection::IsConnected() const
+{
+    if (Sock == INVALID_SOCKET || Session == nullptr)
+        return false;
+    if (!ScpMode && Sftp == nullptr)
+        return false;
+
+    // Fast non-blocking check if socket has been closed remotely (FIN/RST) or encountered errors
+    fd_set rfd, efd;
+    FD_ZERO(&rfd);
+    FD_ZERO(&efd);
+    FD_SET(Sock, &rfd);
+    FD_SET(Sock, &efd);
+    timeval tv = {0, 0};
+    int sel = select((int)Sock + 1, &rfd, NULL, &efd, &tv);
+    if (sel > 0)
+    {
+        if (FD_ISSET(Sock, &efd))
+            return false;
+        if (FD_ISSET(Sock, &rfd))
+        {
+            char peekBuf[1];
+            int r = recv(Sock, peekBuf, 1, MSG_PEEK);
+            if (r == 0)
+                return false; // Connection closed gracefully by peer (FIN)
+            if (r < 0)
+            {
+                int err = WSAGetLastError();
+                if (err != WSAEWOULDBLOCK)
+                    return false; // Connection reset or socket error
+            }
+        }
+    }
+    else if (sel < 0)
+    {
+        return false;
+    }
+
+    // Send keepalive packet if interval has elapsed (keeps SSH session active and verifies transport)
+    int rc = libssh2_keepalive_send(Session, nullptr);
+    if (rc != 0 && rc != LIBSSH2_ERROR_EAGAIN)
+        return false;
+
+    return true;
 }
 
 // ===================== Host key verification (known_hosts) =====================

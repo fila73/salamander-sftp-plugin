@@ -62,3 +62,14 @@ mingw32-make -f Makefile.mingw CROSS_COMPILE=
 ```powershell
 g++ test/test_utf8.cpp src/sftpconn.o src/sftpglue.o libssh2_static.a libcrypto-3-x64.a -lws2_32 -lshlwapi -lbcrypt -lcrypt32 -Isrc -Isrc/libssh2/include -o test_utf8.exe
 ```
+
+---
+
+## 4. Udržování spojení a detekce odpojení (Keepalive & Auto-Reconnect)
+
+Pro zajištění stability spojení na nestabilních sítích a proti timeoutům routerů/firewallů:
+1. **TCP Keepalive**: Socket má aktivovaný `SO_KEEPALIVE` s nastavením `SIO_KEEPALIVE_VALS` (15 s nečinnost, 5 s interval opakování).
+2. **SSH Keepalive**: Nastaven přes `libssh2_keepalive_config` a aktivně kontrolován při volání `libssh2_keepalive_send`.
+3. **Detekce stavu v `IsConnected()`**: Neblokující kontrola `select` s `recv(MSG_PEEK)` detekuje vzdálené uzavření spojení (FIN), reset (RST) nebo síťovou chybu ještě před zahájením další operace.
+4. **Transparentní Reconnect**: `SftpEnsureConnected()` při zjištění odpojení automaticky obnoví spojení pomocí aktivního profilu bez nutnosti ručního zásahu uživatele.
+
