@@ -1,0 +1,64 @@
+# Návod na vývoj pluginů pro Open Salamander (SFTP Plugin Reference & Best Practices)
+
+Tento dokument slouží jako přehled architektury, vývojových pravidel a osvědčených postupů při vývoji a údržbě pluginu **SFTP/SCP pro Open Salamander** (x64).
+
+---
+
+## 1. Architektura a adresářová struktura pluginu
+
+Plugin do Salamandera se skládá z:
+- **`sftp.spl`** – Dynamická knihovna pluginu (Windows DLL přejmenovaná na `.spl`).
+- **`english.slg`, `czech.slg`** – Jazykové knihovny s přeloženými texty a dialogy.
+
+### Adresářová struktura:
+
+```
+salamander-sftp-plugin/
+├── src/
+│   ├── sftp.cpp            # Hlavní vstup, SalamanderPluginEntry2, registrace FS
+│   ├── sftp.h              # Společné deklarace rozhraní a struktur
+│   ├── sftp.def            # Exportní definice
+│   ├── sftpconn.cpp/.h     # Komunikační vrstva nad libssh2 (SFTP + SCP)
+│   ├── sftpglue.cpp/.h     # Propojení mezi Salamander FS a CSftpConnection, práce s cestami
+│   ├── fs1.cpp             # Správa relací, přihlašovací dialog, ExecuteOnFS
+│   ├── fs2.cpp             # Implementace CPluginFSInterface (ChangePath, List, Copy, Delete, chmod)
+│   ├── menu.cpp            # Obsluha položek menu
+│   ├── dialogs.cpp/.h      # Dialogy konzole pro spouštění příkazů
+│   ├── precomp.h           # Precompiled headers se Salamander SDK
+│   └── lang/
+│       ├── lang.rh         # Společné resource ID pro jazyky
+│       └── lang.rc         # Texty a dialogy
+├── test/                   # Unit testy pro nezávislou engine vrstvu
+├── Makefile.mingw          # Sestavení pomocí MinGW-w64 (GCC/G++)
+├── README.md               # Dokumentace (EN)
+├── README_CZ.md            # Dokumentace (CZ)
+├── jobs_done.md            # Přehled dokončených úkolů
+└── implementation_plan.md  # Implementační plán
+```
+
+---
+
+## 2. Navigace v adresářovém stromu a zachování fokusu
+
+Při navigaci do nadřazeného adresáře (`..`, `isDir == 2`) v `ExecuteOnFS` je nutné:
+1. Získat aktuální cestu `fs->Path` a normalizovat ji (`SftpNormalize`).
+2. Odstranit případné koncové lomítko.
+3. Najít poslední komponentu cesty (název opouštěné podsložky).
+4. Vypočítat cestu k nadřazenému adresáři (`SftpParent`).
+5. Předat název opouštěné podsložky jako parametr `suggestedFocusName` do `SalamanderGeneral->ChangePanelPathToPluginFS`.
+
+Tím Salamander automaticky nastaví kurzor/focus na složku, ze které uživatel právě vystoupil.
+
+---
+
+## 3. Sestavení a testování
+
+### Kompilace přes MinGW-w64:
+```powershell
+mingw32-make -f Makefile.mingw CROSS_COMPILE=
+```
+
+### Spuštění testů:
+```powershell
+g++ test/test_utf8.cpp src/sftpconn.o src/sftpglue.o libssh2_static.a libcrypto-3-x64.a -lws2_32 -lshlwapi -lbcrypt -lcrypt32 -Isrc -Isrc/libssh2/include -o test_utf8.exe
+```

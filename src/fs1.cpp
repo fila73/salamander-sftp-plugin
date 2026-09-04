@@ -1103,9 +1103,22 @@ CPluginInterfaceForFS::ExecuteOnFS(int panel, CPluginFSInterfaceAbstract* plugin
         char newPath[MAX_PATH];
         if (isDir == 2) // parent directory
         {
+            char currentPath[MAX_PATH];
+            lstrcpynA(currentPath, fs->Path, MAX_PATH);
+            SftpNormalize(currentPath);
+            size_t len = strlen(currentPath);
+            if (len > 1 && currentPath[len - 1] == '/')
+                currentPath[len - 1] = 0;
+            const char* lastSlash = strrchr(currentPath, '/');
+            char focusName[MAX_PATH] = "";
+            if (lastSlash != NULL)
+            {
+                lstrcpynA(focusName, lastSlash + 1, MAX_PATH);
+            }
             SftpParent(fs->Path, newPath, MAX_PATH);
             fs = NULL; // pointer may no longer be valid after ChangePanelPathToXXX
-            SalamanderGeneral->ChangePanelPathToPluginFS(panel, pluginFSName, newPath);
+            SalamanderGeneral->ChangePanelPathToPluginFS(
+                panel, pluginFSName, newPath, NULL, -1, focusName[0] ? focusName : NULL);
         }
         else // subdirectory
         {
