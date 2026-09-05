@@ -91,7 +91,7 @@ cd src/plugins/sftp
 make -f Makefile.mingw
 ```
 
-Výsledkem jsou zkompilované binárky `sftp.spl`, `English.slg` a `Czech.slg` se staticky přilinkovaným `libssh2` a `OpenSSL`.
+Výsledkem jsou zkompilované binárky `sftp.spl`, `english.slg` a `czech.slg` se staticky přilinkovaným `libssh2` i C/C++ runtimem (bez závislosti na MinGW DLL). Pro provoz na jiných PC stačí do složky pluginu přiložit pouze 64bitovou `libcrypto-3-x64.dll`.
 
 ### Možnost B: Přes Visual Studio (MSBuild)
 **Požadavky:** Visual Studio 2022 (x64), knihovny `libssh2` a `openssl` přes vcpkg.

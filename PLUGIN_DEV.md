@@ -73,3 +73,21 @@ Pro zajištění stability spojení na nestabilních sítích a proti timeoutům
 3. **Detekce stavu v `IsConnected()`**: Neblokující kontrola `select` s `recv(MSG_PEEK)` detekuje vzdálené uzavření spojení (FIN), reset (RST) nebo síťovou chybu ještě před zahájením další operace.
 4. **Transparentní Reconnect**: `SftpEnsureConnected()` při zjištění odpojení automaticky obnoví spojení pomocí aktivního profilu bez nutnosti ručního zásahu uživatele.
 
+---
+
+## 5. Statické linkování a distribuce na jiné počítače
+
+Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
+- **Statické runtimes**: `Makefile.mingw` používá `-static -static-libgcc -static-libstdc++`, což eliminuje závislosti na `libwinpthread-1.dll`, `libgcc_s_seh-1.dll` i `libstdc++-6.dll`.
+- **Statický libssh2**: Slinkován ze statického archivu `libssh2_static.a`.
+- **OpenSSL (`libcrypto-3-x64.dll`)**: Z důvodu dynamického načítání a aktualizací kryptografických modulů se `libcrypto-3-x64.dll` distribuuje jako samostatná 64bitová DLL přímo ve složce pluginu (`plugins\sftp\`), odkud ji `sftp.cpp` při startu přednostně načítá (`LOAD_WITH_ALTERED_SEARCH_PATH`).
+- **Ověření závislostí**:
+  ```powershell
+  objdump -p sftp.spl | Select-String "DLL Name"
+  ```
+  Výstup smí obsahovat pouze standardní Windows systémové knihovny a `libcrypto-3-x64.dll`.
+- **Statická analýza**:
+  ```powershell
+  cppcheck --enable=warning,performance,portability,style src/
+  ```
+

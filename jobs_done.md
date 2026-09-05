@@ -12,4 +12,5 @@ Dokument rekapituluje realizované úkoly a opravy v pluginu **SFTP/SCP pro Open
 | **Navigace & Focus na `..`** | Při opuštění složky přes `..` (`isDir == 2`) se extrahuje název opouštěné podsložky a předá se jako `suggestedFocusName` do `ChangePanelPathToPluginFS`. Salamander tak správně vyfokusuje složku v nadřazeném výpisu. | `src/fs1.cpp` |
 | **Protokoly SFTP & SCP** | Plná podpora SFTP v3 a SCP přenosů přes libssh2 + OpenSSL. | `src/sftpconn.cpp`, `src/fs2.cpp` |
 | **Přihlašovací dialog** | Správa uložených relací, profily připojení, šifrování hesel. | `src/fs1.cpp`, `src/sftpglue.cpp` |
+| **Statické linkování & Cppcheck audit** | Přidání `-static` do `Makefile.mingw` (odstranění dynamické závislosti na `libwinpthread-1.dll`), statické slinkování pthreads + libgcc + libstdc++ + libssh2. Provedení statické analýzy přes Cppcheck 2.21 a vyřešení nálezů. | `Makefile.mingw`, `src/sftpconn.cpp`, `src/dialogs.cpp` |
 | **Příkazová konzole** | Spouštění příkazů na serveru s reálným výstupem v okně konzole. | `src/dialogs.cpp`, `src/menu.cpp` |

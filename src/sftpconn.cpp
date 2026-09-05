@@ -887,7 +887,7 @@ bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>
                 // "name -> target" -> take only name before " -> "
                 size_t arrow = name.find(" -> ");
                 if (arrow != std::string::npos)
-                    name = name.substr(0, arrow);
+                    name.resize(arrow);
                 e.IsDir = false;
             }
             if (name == "." || name == "..")
@@ -1276,6 +1276,8 @@ bool CSftpConnection::GetSecurityInfo(std::string& out)
     int ktype = 0;
     size_t klen = 0;
     const char* hk = libssh2_session_hostkey(Session, &klen, &ktype);
+    if (!hk)
+        return false;
     const char* ktypeName = "unknown";
     if (ktype == LIBSSH2_HOSTKEY_TYPE_RSA) ktypeName = "RSA";
     else if (ktype == LIBSSH2_HOSTKEY_TYPE_DSS) ktypeName = "DSS";

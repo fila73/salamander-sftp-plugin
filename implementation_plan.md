@@ -19,6 +19,12 @@ Zajistit spolehlivé udržení spojení se vzdáleným SFTP/SCP serverem při ne
 ### 3. `src/sftpglue.cpp`
 - V `SftpEnsureConnected()`: Pokud `IsConnected()` detekuje odpojený socket, provede se znovunavázání spojení pomocí uloženého aktivního profilu (`SftpProfile`).
 
+### 4. `Makefile.mingw` a audit čistoty závislostí
+- Obnoven přepínač `-static` v `LDFLAGS`, který zajišťuje plně statické slinkování `libwinpthread.a` spolu s `libstdc++.a`, `libgcc.a` a `libssh2_static.a`. Tím byla odstraněna nechtěná dynamická závislost na `libwinpthread-1.dll`.
+- Odstranění drobných varování identifikovaných statickou analýzou Cppcheck v `src/sftpconn.cpp` a `src/dialogs.cpp`.
+
 ## Verifikace
 - Úspěšný překlad pluginu `mingw32-make -f Makefile.mingw CROSS_COMPILE=`.
-- Sestavení a úspěšný běh unit testu `test/test_isconnected.cpp` (ověření stavů před připojením i po neúspěšném pokusu o spojení).
+- Kontrola importů DLL přes `objdump -p sftp.spl | Select-String "DLL Name"` – plugin závisí výhradně na standardních systémových DLL Windows a bundled `libcrypto-3-x64.dll`.
+- Proveden běh linteru `Cppcheck 2.21.0` s `--enable=warning,performance,portability,style`.
+- Sestavení a úspěšný běh unit testu `test/test_isconnected.cpp`.

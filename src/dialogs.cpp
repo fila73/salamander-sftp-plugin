@@ -734,18 +734,18 @@ CCtrlExampleDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 struct CCmdExecContext
 {
-    HWND hDlg;
+    HWND hDlg = NULL;
     std::string displayCmd;
     std::string fullCmd;
     CSftpProfile profile;
-    CPluginFSInterfaceAbstract* fs;
-    volatile bool cancelRequested;
-    volatile bool isRunning;
-    HANDLE hThread;
+    CPluginFSInterfaceAbstract* fs = nullptr;
+    volatile bool cancelRequested = false;
+    volatile bool isRunning = false;
+    HANDLE hThread = NULL;
     CRITICAL_SECTION cs;
     std::vector<std::string> pendingChunks;
-    HFONT hFont;
-    bool success;
+    HFONT hFont = NULL;
+    bool success = false;
     std::string errorMsg;
 };
 

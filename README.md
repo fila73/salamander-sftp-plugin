@@ -91,7 +91,7 @@ cd src/plugins/sftp
 make -f Makefile.mingw
 ```
 
-This compiles `sftp.spl`, `English.slg`, and `Czech.slg` statically linked against `libssh2` and OpenSSL.
+This compiles `sftp.spl`, `english.slg`, and `czech.slg` with statically linked `libssh2` and C/C++ runtimes (no MinGW DLL dependencies). For deployment on other PCs, only the standard 64-bit `libcrypto-3-x64.dll` needs to be placed alongside `sftp.spl`.
 
 ### Option B: Using Visual Studio (MSBuild)
 **Requirements:** Visual Studio 2022 (x64), libssh2 + OpenSSL via vcpkg.
