@@ -37,7 +37,7 @@ Negotiated automatically based on server capabilities:
 - **Resume interrupted transfers** – byte-exact resume from last position (SFTP)
 - Delete, create directory, rename, **change permissions (`chmod`)**, properties
 - **Edit file on server** (F4 – downloads to temp, opens default editor, automatically re-uploads on save)
-- **Calculate directory size**
+- **Calculate directory size** (fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
 - **Remote Command Execution**:
   - Direct execution via Open Salamander command line bar below panels
   - Context menu item **`Execute`** (located right after `Open`)
@@ -45,7 +45,7 @@ Negotiated automatically based on server capabilities:
 
 ### Connection Management & UI
 - Login dialog with categorized tree view and saved connections (New / Edit / Delete / Rename / Set as Default)
-- **Keepalive & Connection Stability**: TCP and SSH keepalive probes (15s) prevent idle disconnects; non-blocking socket health check and automatic transparent reconnect
+- **Keepalive & Connection Stability**: Active periodic FS timer keepalive (8s) prevents idle disconnects on firewalls and TrueNAS / OpenSSH servers (`ClientAliveInterval`); non-blocking socket health check and automatic transparent reconnect & retry
 - Password visibility toggle (eye icon)
 - Dark mode support matching Open Salamander dark theme
 - Multi-language localization (`.slg` modules for English, Czech, and all 11 Salamander languages)

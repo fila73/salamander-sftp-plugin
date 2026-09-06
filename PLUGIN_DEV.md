@@ -67,11 +67,21 @@ g++ test/test_utf8.cpp src/sftpconn.o src/sftpglue.o libssh2_static.a libcrypto-
 
 ## 4. Udržování spojení a detekce odpojení (Keepalive & Auto-Reconnect)
 
-Pro zajištění stability spojení na nestabilních sítích a proti timeoutům routerů/firewallů:
+Pro zajištění stability spojení na nestabilních sítích a proti timeoutům routerů/firewallů a serverů typu TrueNAS / OpenSSH:
 1. **TCP Keepalive**: Socket má aktivovaný `SO_KEEPALIVE` s nastavením `SIO_KEEPALIVE_VALS` (15 s nečinnost, 5 s interval opakování).
-2. **SSH Keepalive**: Nastaven přes `libssh2_keepalive_config` a aktivně kontrolován při volání `libssh2_keepalive_send`.
+2. **Proaktivní FS Timer Keepalive**: V `ChangePath` je registrován časovač `SalamanderGeneral->AddPluginFSTimer(8000, this, SFTP_TIMER_KEEPALIVE)`. Během nečinnosti uživatele (kdy Salamander čeká v message loop) se každých 8 s volá `SendKeepalive()`, což odbavuje `ClientAliveInterval` dotazy serveru (např. TrueNAS) a posílá keepalive sondu s `want_reply = 0`.
 3. **Detekce stavu v `IsConnected()`**: Neblokující kontrola `select` s `recv(MSG_PEEK)` detekuje vzdálené uzavření spojení (FIN), reset (RST) nebo síťovou chybu ještě před zahájením další operace.
-4. **Transparentní Reconnect**: `SftpEnsureConnected()` při zjištění odpojení automaticky obnoví spojení pomocí aktivního profilu bez nutnosti ručního zásahu uživatele.
+4. **Transparentní Reconnect & Retry**: `SftpEnsureConnected()` při zjištění odpojení automaticky obnoví spojení. Operace čtení adresářů `ListCurrentPath` při selhání provede transparentní znovunavázání a opakování operace.
+
+---
+
+## 5. Výpočet velikosti složek na serveru (Calc Size)
+
+Při výpočtu velikosti složek (`Calculate Size (server)`):
+1. **Server-side optimalizace (`FastDirSize`)**: Nejprve se pokusí spustit rychlý výpočet na serveru přes SSH exec (`du -sb` / `du -sk` + `find`), což proběhne v milisekundách bez stahování výpisu souborů po síti.
+2. **Bezpečný fallback na SFTP rekurzi**: Pokud server neumožňuje spuštění shellových příkazů, proběhne rekurzivní procházení podsložek s ochranou proti cyklení na symbolických odkazech.
+3. **Nezamrzající dialog s Cancel**: Po celou dobu běhu je zobrazen dialog s průběžným stavem skenování a možností výpočet kdykoliv zrušit (klávesa Escape / tlačítko Storno).
+4. **Aktualizace panelu**: Vypočtená velikost se zapíše do `CFileData` a panel se okamžitě překreslí.
 
 ---
 

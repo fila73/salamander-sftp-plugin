@@ -37,7 +37,7 @@ Vše se vyjednává automaticky dle možností serveru:
 - **Navazování přerušených přenosů (resume)** – pokračování od poslední pozice (SFTP)
 - Mazání, vytváření adresářů, přejmenování, **změna oprávnění (`chmod`)**, vlastnosti souborů
 - **Úprava souboru přímo na serveru** (F4 – stáhne soubor do dočasné složky, otevře výchozí editor a po uložení automaticky nahraje zpět)
-- **Výpočet velikosti složek na serveru**
+- **Výpočet velikosti složek na serveru** (rychlý server-side `du` výpočet s rekurzivním fallbackem, nezamrzající dialog průběhu s tlačítkem Cancel, ochrana proti symlinkovým cyklům a okamžitá aktualizace velikosti v panelu)
 - **Spouštění příkazů na serveru**:
   - Přímo z příkazového řádku Salamandera pod panely
   - Kontextová položka **`Execute`** (umístěná přímo pod `Open`)
@@ -45,7 +45,7 @@ Vše se vyjednává automaticky dle možností serveru:
 
 ### Správa připojení a UI
 - Přihlašovací dialog se stromem relací ve stylu WinSCP (Nová relace / Upravit / Smazat / Přejmenovat / Výchozí)
-- **Udržování spojení a stabilita**: TCP a SSH keepalive pakety (15 s) zabraňují odpojení nečinných relací; transparentní detekce živosti socketu a auto-reconnect
+- **Udržování spojení a stabilita**: Aktivní periodický FS timer keepalive (8 s) zabraňuje odpojení nečinných relací přes firewally a na serverech typu TrueNAS / OpenSSH (`ClientAliveInterval`); transparentní detekce živosti socketu a auto-reconnect & retry při operacích
 - Zobrazení/skrytí hesla (ikona oka)
 - Podpora tmavého režimu (Dark Mode) sjednoceného se Salamanderem
 - Jazyková lokalizace (`.slg` moduly pro češtinu, angličtinu i ostatní jazyky Salamandera)

@@ -12,6 +12,8 @@
 #include "precomp.h"
 #include "sftpglue.h"
 
+static const DWORD SFTP_TIMER_KEEPALIVE = 1001;
+
 //
 // ****************************************************************************
 // CDeleteProgressDlg
@@ -225,7 +227,10 @@ static unsigned __int64 LocalFileSize(const char* path)
     WIN32_FILE_ATTRIBUTE_DATA fad;
     if (!GetFileAttributesEx(path, GetFileExInfoStandard, &fad))
         return 0;
-    return ((unsigned __int64)fad.nFileSizeHigh << 32) | fad.nFileSizeLow;
+    ULARGE_INTEGER sz;
+    sz.LowPart = fad.nFileSizeLow;
+    sz.HighPart = fad.nFileSizeHigh;
+    return sz.QuadPart;
 }
 
 // local modification time as unix time (0 if not found)
@@ -583,6 +588,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         if (type == 2)
         {
             lstrcpyn(Path, path, MAX_PATH);
+            SalamanderGeneral->AddPluginFSTimer(8000, this, SFTP_TIMER_KEEPALIVE);
             return TRUE;
         }
         // file or not found -> trim last component
@@ -629,8 +635,16 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
     std::vector<CSftpEntry> entries;
     if (!SftpConn.ListDir(Path[0] != 0 ? Path : "/", entries))
     {
-        PathError = TRUE; // list error -> ChangePath will shorten path
-        return FALSE;
+        // Try transparent reconnect once in case connection was dropped during idle
+        if (SftpEnsureConnected(parent) && SftpConn.ListDir(Path[0] != 0 ? Path : "/", entries))
+        {
+            // Successfully recovered
+        }
+        else
+        {
+            PathError = TRUE; // list error -> ChangePath will shorten path
+            return FALSE;
+        }
     }
 
     pluginData = new CPluginFSDataInterface(Path);
@@ -820,22 +834,14 @@ CPluginFSInterface::Event(int event, DWORD param)
 #endif // SFTP_QUIET
     }
 
-    /*  // simple test of receiving the "timer" event after the timer expires
-  if (event == FSE_TIMER)
-  {
-    TRACE_I("CPluginFSInterface::Event(): timer event " << param);
-    if (param == 1234)
+    if (event == FSE_TIMER && param == SFTP_TIMER_KEEPALIVE)
     {
-      SalamanderGeneral->AddPluginFSTimer(2000, this, 123456);
+        if (SftpConn.IsConnected())
+        {
+            SftpConn.SendKeepalive();
+        }
+        SalamanderGeneral->AddPluginFSTimer(8000, this, SFTP_TIMER_KEEPALIVE);
     }
-    if (param == 123456)
-    {
-      SalamanderGeneral->AddPluginFSTimer(2000, this, 123452);
-      SalamanderGeneral->AddPluginFSTimer(2000, this, 123452);
-      SalamanderGeneral->AddPluginFSTimer(1500, this, 1234);
-    }
-  }
-*/
 }
 
 DWORD WINAPI
@@ -1362,21 +1368,44 @@ static void LocalDeleteRecursive(const char* path, bool isDir)
     RemoveDirectory(path);
 }
 
-// recursive sum of remote directory size
-static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs)
+// recursive sum of remote directory size with cancellation check and symlink cycle protection
+static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, bool& cancelled, CDeleteProgressDlg* progDlg, int depth = 0)
 {
+    if (cancelled || depth > 50)
+        return 0;
+
+    if (progDlg != NULL && progDlg->GetWantCancel())
+    {
+        cancelled = true;
+        return 0;
+    }
+
+    if (progDlg != NULL)
+    {
+        char progressText[MAX_PATH + 64];
+        _snprintf_s(progressText, _TRUNCATE, "Scanning: %s", remote);
+        progDlg->Set(progressText, 0, TRUE);
+    }
+
     unsigned __int64 total = 0;
     std::vector<CSftpEntry> entries;
     if (!SftpConn.ListDir(remote, entries))
         return 0;
+
     for (size_t i = 0; i < entries.size(); i++)
     {
+        if (cancelled || (progDlg != NULL && progDlg->GetWantCancel()))
+        {
+            cancelled = true;
+            return total;
+        }
+
         char child[MAX_PATH];
         SftpJoin(remote, entries[i].Name.c_str(), child, MAX_PATH);
-        if (entries[i].IsDir)
+        if (entries[i].IsDir && !entries[i].IsLink) // do NOT recurse into symlinked directories to prevent cycles
         {
             dirs++;
-            total += SftpDirSize(child, files, dirs);
+            total += SftpDirSize(child, files, dirs, cancelled, progDlg, depth + 1);
         }
         else
         {
@@ -1441,9 +1470,35 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
     index = 0;
     unsigned __int64 total = 0;
     int files = 0, dirs = 0;
-    HCURSOR oldCur = SetCursor(LoadCursor(NULL, IDC_WAIT));
-    while (1)
+    bool cancelled = false;
+
+    HWND mainWnd = parent;
+    HWND pw;
+    while ((pw = GetParent(mainWnd)) != NULL && IsWindowEnabled(pw))
+        mainWnd = pw;
+    EnableWindow(mainWnd, FALSE);
+
+    CDeleteProgressDlg* progDlg = new CDeleteProgressDlg(mainWnd, ooStatic);
+    if (progDlg != NULL && progDlg->Create() != NULL)
     {
+        SetForegroundWindow(progDlg->HWindow);
+        progDlg->Set("Calculating directory size on server...", 0, FALSE);
+    }
+    else
+    {
+        if (progDlg != NULL)
+            delete progDlg;
+        progDlg = NULL;
+    }
+
+    while (!cancelled)
+    {
+        if (progDlg != NULL && progDlg->GetWantCancel())
+        {
+            cancelled = true;
+            break;
+        }
+
         f = focused ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDir)
                     : SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir);
         if (f == NULL)
@@ -1456,15 +1511,33 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
             {
                 dirs++;
                 int subFiles = 0, subDirs = 0;
-                unsigned __int64 dirSize = SftpDirSize(remote, subFiles, subDirs);
+                unsigned __int64 dirSize = 0;
+
+                if (progDlg != NULL)
+                {
+                    char buf[MAX_PATH + 32];
+                    _snprintf_s(buf, _TRUNCATE, "Scanning %s...", f->Name);
+                    progDlg->Set(buf, 0, FALSE);
+                }
+
+                // Try fast server-side calculation (du / find) first
+                if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs))
+                {
+                    // Fall back to recursive SFTP scan with cancel check
+                    dirSize = SftpDirSize(remote, subFiles, subDirs, cancelled, progDlg);
+                }
+
                 files += subFiles;
                 dirs += subDirs;
                 total += dirSize;
 
-                CFileData* nonConstF = const_cast<CFileData*>(f);
-                nonConstF->Size.SetUI64(dirSize);
-                nonConstF->SizeValid = 1;
-                nonConstF->Dirty = 1;
+                if (!cancelled)
+                {
+                    CFileData* nonConstF = const_cast<CFileData*>(f);
+                    nonConstF->Size.SetUI64(dirSize);
+                    nonConstF->SizeValid = 1;
+                    nonConstF->Dirty = 1;
+                }
             }
             else
             {
@@ -1475,7 +1548,18 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
         if (focused)
             break;
     }
-    SetCursor(oldCur);
+
+    if (progDlg != NULL)
+    {
+        EnableWindow(mainWnd, TRUE);
+        DestroyWindow(progDlg->HWindow);
+        delete progDlg;
+        progDlg = NULL;
+    }
+    else
+    {
+        EnableWindow(mainWnd, TRUE);
+    }
 
     SalamanderGeneral->RepaintChangedItems(panel);
 
@@ -1486,11 +1570,18 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
         UpdateWindow(hFocus);
     }
 
-    char info[400];
-    _snprintf_s(info, _TRUNCATE,
-                "Size: %I64u bytes (%.2f MB)\nFiles: %d\nDirectories: %d",
-                total, total / 1048576.0, files, dirs);
-    SalamanderGeneral->SalMessageBox(parent, info, "Size on server", MB_OK | MB_ICONINFORMATION);
+    if (cancelled)
+    {
+        SalamanderGeneral->SalMessageBox(parent, "Calculation was cancelled by user.", LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
+    }
+    else
+    {
+        char info[400];
+        _snprintf_s(info, _TRUNCATE,
+                    "Size: %I64u bytes (%.2f MB)\nFiles: %d\nDirectories: %d",
+                    total, total / 1048576.0, files, dirs);
+        SalamanderGeneral->SalMessageBox(parent, info, "Size on server", MB_OK | MB_ICONINFORMATION);
+    }
 }
 
 // directory synchronization: direction 0 = download (server->PC), 1 = upload (PC->server).

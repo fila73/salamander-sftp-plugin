@@ -38,10 +38,14 @@ public:
                  bool useCompression = false, int protocol = 0, bool scpFallback = false, const char* sftpServer = nullptr);
     void Disconnect();
     bool IsConnected() const;
+    bool SendKeepalive();
     bool IsScpMode() const { return ScpMode; }
 
     // List directory (remotePath in "/" or "/dir/sub" style).
     bool ListDir(const char* remotePath, std::vector<CSftpEntry>& out);
+
+    // Fast server-side directory size calculation via exec (du / find). Returns false if not supported.
+    bool FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs);
 
     // Download remote file to local. resumeOffset>0 = resume from given position
     // (SFTP only; SCP cannot resume). Returns current remote file size in *remoteSize.

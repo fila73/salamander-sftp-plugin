@@ -1,30 +1,69 @@
-# Implementační plán – Keepalive a detekce stavu spojení (Auto-Reconnect)
+# Implementační plán – Stabilizace spojení s TrueNAS a vylepšení výpočtu velikosti složek (Calc Size)
 
-## Cíl
-Zajistit spolehlivé udržení spojení se vzdáleným SFTP/SCP serverem při nečinnosti (ochrana proti timeoutu firewallů a NAT routerů), spolehlivou detekci pádu socketu a transparentní automatické znovupřipojení.
+## 🎯 Cíle
 
-## Navržené a realizované změny
+1. **Vyřešit odpojování od TrueNAS / OpenSSH serverů**:
+   - TrueNAS používá výchozí konfiguraci OpenSSH s `ClientAliveInterval` (server posílá sondy `keepalive@openssh.com` klientovi).
+   - Když uživatel v Salamanderu neprovádí žádnou akci, plugin byl v nečinnosti a neodpovídal na transportní vrstvě libssh2, což vedlo k tomu, že TrueNAS po vypršení `ClientAliveCountMax` spojení jednostranně ukončil (FIN/RST).
+   - Zároveň `want_reply = 1` u `libssh2_keepalive_send` vyvolával ze strany OpenSSH zbytečné odpovědi `SSH_MSG_REQUEST_FAILURE`.
+   - Chyběla automatická obnova (reconnect & retry) přímo při selhání jednotlivých FS operací (`ListCurrentPath`, `PathType`, `Download`, ...).
 
-### 1. `src/sftpconn.h`
-- Změna inline metody `IsConnected()` na plnohodnotnou metodu deklarovanou v hlavičkovém souboru a implementovanou v `sftpconn.cpp`.
+2. **Výrazně vylepšit výpočet velikosti složky na serveru (`Calc Size`)**:
+   - Nahradit blokující synchronní zamrznutí UI interaktivním průběžným dialogem (`OpenProgressDialog` / `ProgressDialogCheckCancel`) s možností zrušení (**Cancel**).
+   - Implementovat rychlou server-side kalkulaci přes SSH exec (`du -sb` / `du -sk`) tam, kde je dostupný shell, s bezpečným fallbackem na rekurzivní SFTP skenování.
+   - Ochrana proti zacyklení na cyklických symbolických odkazech (symlinks).
+   - Okamžitá aktualizace velikosti v panelu Salamandera.
 
-### 2. `src/sftpconn.cpp`
-- **TCP Keepalive**: V `Connect()` zapnut socket keepalive (`SO_KEEPALIVE`) a nastaveny parametry přes `SIO_KEEPALIVE_VALS` (15 s idle, 5 s probe interval).
-- **SSH Keepalive**: V `Connect()` nakonfigurován SSH keepalive interval (`libssh2_keepalive_config(Session, 1, 15)`).
-- **Detekce živosti socketu v `IsConnected()`**:
-  - Kontrola platnosti handle socketu a relací.
-  - Neblokující `select` na `efd` a `rfd` s `recv(MSG_PEEK)` k okamžité detekci vzdáleného ukončení spojení (FIN / RST / síťové chyby).
-  - Odeslání periodického keepalive paketu přes `libssh2_keepalive_send(Session, nullptr)` a ověření funkčnosti transportní vrstvy.
+---
 
-### 3. `src/sftpglue.cpp`
-- V `SftpEnsureConnected()`: Pokud `IsConnected()` detekuje odpojený socket, provede se znovunavázání spojení pomocí uloženého aktivního profilu (`SftpProfile`).
+## 🛠️ Navržené změny
 
-### 4. `Makefile.mingw` a audit čistoty závislostí
-- Obnoven přepínač `-static` v `LDFLAGS`, který zajišťuje plně statické slinkování `libwinpthread.a` spolu s `libstdc++.a`, `libgcc.a` a `libssh2_static.a`. Tím byla odstraněna nechtěná dynamická závislost na `libwinpthread-1.dll`.
-- Odstranění drobných varování identifikovaných statickou analýzou Cppcheck v `src/sftpconn.cpp` a `src/dialogs.cpp`.
+### 1. Řešení odpojování od TrueNAS & OpenSSH
 
-## Verifikace
-- Úspěšný překlad pluginu `mingw32-make -f Makefile.mingw CROSS_COMPILE=`.
-- Kontrola importů DLL přes `objdump -p sftp.spl | Select-String "DLL Name"` – plugin závisí výhradně na standardních systémových DLL Windows a bundled `libcrypto-3-x64.dll`.
-- Proveden běh linteru `Cppcheck 2.21.0` s `--enable=warning,performance,portability,style`.
-- Sestavení a úspěšný běh unit testu `test/test_isconnected.cpp`.
+#### [MODIFY] [`src/sftpconn.h`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpconn.h) & [`src/sftpconn.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpconn.cpp)
+- Přidat metodu `SendKeepalive()`:
+  - Zavolá `libssh2_keepalive_send(Session, ...)` a zpracuje příchozí pakety ze socketu bez blokování.
+  - Změnit konfiguraci na `libssh2_keepalive_config(Session, 0, 10)` (`want_reply = 0`), aby OpenSSH negenerovalo `SSH_MSG_REQUEST_FAILURE`.
+- Vylepšit `IsConnected()` o detekci stavu socketu před i po transportním zápisu.
+- Do `ListDir`, `PathType`, `Download`, `Upload`, `StatFull` přidat detekci odpojení a možnost automatického znovupřipojení a opakování operace.
+
+#### [MODIFY] [`src/fs2.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
+- V `CPluginFSInterface::ChangePath` po úspěšném připojení zaregistrovat periodický FS časovač:
+  `SalamanderGeneral->AddPluginFSTimer(8000, this, SFTP_TIMER_KEEPALIVE);`
+- V `CPluginFSInterface::Event`:
+  - Při `event == FSE_TIMER` a `param == SFTP_TIMER_KEEPALIVE`:
+    - Zavolat `SftpConn.SendKeepalive()`.
+    - Znovu naplánovat `SalamanderGeneral->AddPluginFSTimer(8000, this, SFTP_TIMER_KEEPALIVE)`.
+  - Tím je zaručeno, že i při dlouhé nečinnosti uživatele (kdy Salamander čeká v message loop) se každých 8 sekund odešle keepalive a odbaví příchozí `ClientAliveInterval` sondy z TrueNAS.
+- V `ListCurrentPath`: pokud `ListDir` selže z důvodu odpojeného socketu, provést transparentní `SftpEnsureConnected` a 1x opakovat čtení složky.
+
+---
+
+### 2. Vylepšení výpočtu velikosti složek (`Calc Size`)
+
+#### [MODIFY] [`src/sftpconn.h`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpconn.h) & [`src/sftpconn.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpconn.cpp)
+- Přidat metodu `FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs)`:
+  - Pokusí se o rychlý server-side výpočet přes SSH exec (`du -sb` nebo POSIX `find`/`wc`).
+  - Pokud server příkaz nepodporuje nebo je v režimu omezeného SFTP subsystému, vrátí `false` a použije se SFTP rekurze.
+
+#### [MODIFY] [`src/fs2.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
+- Přepracovat `SftpCalcSize`:
+  - Použít `SalamanderGeneral->OpenProgressDialog` s textem "Počítání velikosti na serveru...".
+  - Během rekurze pravidelně kontrolovat `SalamanderGeneral->ProgressDialogCheckCancel()`.
+  - Pokud uživatel stiskne Storno / Cancel, výpočet se bezpečně přeruší bez pádu a bez zamrznutí.
+  - Zobrazovat aktuálně procházenou složku a mezisoučty přes `SalamanderGeneral->ProgressDialogAddText`.
+  - Zamezit cyklickému zanoření symlinků (symlinky nezanořovat, počítat pouze jejich velikost).
+  - Po dokončení aktualizovat velikost položek v panelu a zavolat `SalamanderGeneral->RepaintChangedItems(panel)`.
+
+---
+
+## 🧪 Verifikační plán
+
+### 1. Automatické a integrační testy
+- Kompilace pluginu přes `mingw32-make -f Makefile.mingw CROSS_COMPILE=`.
+- Sestavení a spuštění testu `test/test_isconnected.cpp` a nového testu `test/test_keepalive.cpp`.
+- Spuštění statické analýzy `cppcheck --enable=warning,performance,portability,style src/`.
+
+### 2. Manuální ověření
+- Test nečinnosti na TrueNAS / OpenSSH serveru po dobu několika minut – ověření, že spojení zůstává aktivní a nevypadává.
+- Test `Calculate Size (server)` na složce s mnoha podsložkami a soubory – ověření dialogu průběhu, tlačítka Cancel a správného zobrazení velikosti v panelu Salamandera.

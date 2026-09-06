@@ -174,8 +174,8 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
 
     if (libssh2_session_handshake(Session, Sock)) { SetError("SSH handshake"); Disconnect(); return false; }
 
-    // Enable SSH keepalive (every 15s)
-    libssh2_keepalive_config(Session, 1, 15);
+    // Enable SSH keepalive (every 10s, want_reply = 0 to avoid SSH_MSG_REQUEST_FAILURE from OpenSSH)
+    libssh2_keepalive_config(Session, 0, 10);
 
     // host key verification (known_hosts + user prompt)
     if (!VerifyHostKey(host, port)) { Disconnect(); return false; }
@@ -222,6 +222,20 @@ void CSftpConnection::Disconnect()
         Session = nullptr;
     }
     if (Sock != INVALID_SOCKET) { closesocket(Sock); Sock = INVALID_SOCKET; }
+}
+
+bool CSftpConnection::SendKeepalive()
+{
+    if (Sock == INVALID_SOCKET || Session == nullptr)
+        return false;
+
+    // Send keepalive packet (keeps SSH session active on server side like TrueNAS ClientAliveInterval)
+    int seconds_to_next = 0;
+    int rc = libssh2_keepalive_send(Session, &seconds_to_next);
+    if (rc != 0 && rc != LIBSSH2_ERROR_EAGAIN)
+        return false;
+
+    return true;
 }
 
 bool CSftpConnection::IsConnected() const
@@ -826,6 +840,50 @@ bool CSftpConnection::ExecSimple(const char* command)
         ErrorMsg = out.empty() ? "Command on server failed." : out;
         return false;
     }
+    return true;
+}
+
+bool CSftpConnection::FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs)
+{
+    outBytes = 0;
+    outFiles = 0;
+    outDirs = 0;
+    if (Sock == INVALID_SOCKET || Session == nullptr)
+        return false;
+
+    std::string _rp = ToServerEnc(remotePath);
+    std::string q = ShellQuote(_rp.c_str());
+
+    // Try server-side du command first: du -sb -- <path> (GNU du / Linux / TrueNAS SCALE)
+    // or du -sk -- <path> (POSIX / BSD / FreeBSD / TrueNAS CORE)
+    std::string cmd = "du -sb -- " + q + " 2>/dev/null || du -sk -- " + q + " 2>/dev/null";
+    std::string out;
+    int code = -1;
+    if (!ExecRaw(cmd.c_str(), out, &code) || code != 0 || out.empty())
+        return false;
+
+    unsigned __int64 val = _strtoui64(out.c_str(), nullptr, 10);
+    if (val == 0 && out[0] != '0')
+        return false;
+
+    // Check whether du output was in exact bytes (-b) or 1024-byte blocks (-k)
+    bool isBytes = (out.find("invalid option") == std::string::npos && out.find("illegal option") == std::string::npos);
+    outBytes = isBytes ? val : (val * 1024);
+
+    // Also count files and directories via find
+    std::string cntCmd = "find " + q + " -type f 2>/dev/null | wc -l; find " + q + " -mindepth 1 -type d 2>/dev/null | wc -l";
+    std::string cntOut;
+    int cntCode = -1;
+    if (ExecRaw(cntCmd.c_str(), cntOut, &cntCode) && cntCode == 0 && !cntOut.empty())
+    {
+        int f = 0, d = 0;
+        if (sscanf_s(cntOut.c_str(), "%d\n%d", &f, &d) >= 1)
+        {
+            outFiles = f;
+            outDirs = d;
+        }
+    }
+
     return true;
 }
 
