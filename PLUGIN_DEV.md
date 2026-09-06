@@ -75,13 +75,19 @@ Pro zajištění stability spojení na nestabilních sítích a proti timeoutům
 
 ---
 
-## 5. Výpočet velikosti složek na serveru (Calc Size)
+## 5. Výpočet velikosti složek na serveru (Calc Size) a klávesové zkratky
 
 Při výpočtu velikosti složek (`Calculate Size (server)`):
 1. **Server-side optimalizace (`FastDirSize`)**: Nejprve se pokusí spustit rychlý výpočet na serveru přes SSH exec (`du -sb` / `du -sk` + `find`), což proběhne v milisekundách bez stahování výpisu souborů po síti.
 2. **Bezpečný fallback na SFTP rekurzi**: Pokud server neumožňuje spuštění shellových příkazů, proběhne rekurzivní procházení podsložek s ochranou proti cyklení na symbolických odkazech.
 3. **Nezamrzající dialog s Cancel**: Po celou dobu běhu je zobrazen dialog s průběžným stavem skenování a možností výpočet kdykoliv zrušit (klávesa Escape / tlačítko Storno).
 4. **Aktualizace panelu**: Vypočtená velikost se zapíše do `CFileData` a panel se okamžitě překreslí.
+5. **Klávesová zkratka `Ctrl+Shift+F10` & Kontextové menu**:
+   - V `sftp.cpp` je pro položku `Calculate &Size (server)` registrována zkratka `SALHOTKEY(VK_F10, HOTKEYF_CONTROL | HOTKEYF_SHIFT)`.
+   - V `fs2.cpp` (`ContextMenu()`) a v `GetSupportedServices()` (`FS_SERVICE_CALCULATEOCCUPIEDSPACE`) jsou standardní příkazy Salamandera `SALCMD_CALCDIRSIZES` a `SALCMD_OCCUPIEDSPACE` povoleny a přesměrovány na obsluhu `MENUCMD_CALCSIZE`.
+6. **Architektonické omezení mezerníku (Spacebar) v jádře Open Salamandera**:
+   - V jádře Open Salamandera (`fileswn0.cpp:1082-1087`) je stisk mezerníku (`VK_SPACE`) obsloužen pouze pro lokální disk (`ptDisk`) a ZIP archivy (`ptZIPArchive`). Pro pluginy (`ptPluginFS`) má Salamander explicitní poznámku `// to be implemented` a stisk mezerníku pouze invertuje výběr položky bez volání pluginu.
+   - Stejně tak globální enabler `EnablerCalcDirSizes` v hlavním okně Salamandera (`mainwnd1.cpp:2863`) omezuje volání pouze na `onDisk || archive`. Z toho důvodu plugin definuje vlastní položku menu a zkratku `Ctrl+Shift+F10`, která funguje nezávisle na enablerech jádra.
 
 ---
 

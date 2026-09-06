@@ -787,7 +787,7 @@ CPluginInterface::Connect(HWND parent, CSalamanderConnectAbstract* salamander)
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS | MENU_EVENT_FILE_FOCUSED, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, "&Edit File (server)", SALHOTKEY(VK_F4, 0), MENUCMD_EDITFILE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS | MENU_EVENT_FILE_FOCUSED, MENU_SKILLLEVEL_ALL);
-    salamander->AddMenuItem(-1, "Calculate &Size (server)", 0, MENUCMD_CALCSIZE, FALSE,
+    salamander->AddMenuItem(-1, "Calculate &Size (server)", SALHOTKEY(VK_F10, HOTKEYF_CONTROL | HOTKEYF_SHIFT), MENUCMD_CALCSIZE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, "S&ynchronize Directory...", 0, MENUCMD_SYNC, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);

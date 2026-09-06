@@ -37,7 +37,7 @@ Negotiated automatically based on server capabilities:
 - **Resume interrupted transfers** – byte-exact resume from last position (SFTP)
 - Delete, create directory, rename, **change permissions (`chmod`)**, properties
 - **Edit file on server** (F4 – downloads to temp, opens default editor, automatically re-uploads on save)
-- **Calculate directory size** (fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
+- **Calculate directory size** (`Ctrl+Shift+F10`, fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
 - **Remote Command Execution**:
   - Direct execution via Open Salamander command line bar below panels
   - Context menu item **`Execute`** (located right after `Open`)

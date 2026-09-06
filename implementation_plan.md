@@ -46,7 +46,7 @@
   - Pokusí se o rychlý server-side výpočet přes SSH exec (`du -sb` nebo POSIX `find`/`wc`).
   - Pokud server příkaz nepodporuje nebo je v režimu omezeného SFTP subsystému, vrátí `false` a použije se SFTP rekurze.
 
-#### [MODIFY] [`src/fs2.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
+#### [MODIFY] [`src/fs2.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp) & [`src/sftp.cpp`](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.cpp)
 - Přepracovat `SftpCalcSize`:
   - Použít `SalamanderGeneral->OpenProgressDialog` s textem "Počítání velikosti na serveru...".
   - Během rekurze pravidelně kontrolovat `SalamanderGeneral->ProgressDialogCheckCancel()`.
@@ -54,6 +54,9 @@
   - Zobrazovat aktuálně procházenou složku a mezisoučty přes `SalamanderGeneral->ProgressDialogAddText`.
   - Zamezit cyklickému zanoření symlinků (symlinky nezanořovat, počítat pouze jejich velikost).
   - Po dokončení aktualizovat velikost položek v panelu a zavolat `SalamanderGeneral->RepaintChangedItems(panel)`.
+- Zpřístupnit `Ctrl+Shift+F10` a kontextové menu:
+  - V `src/sftp.cpp` přiřadit klávesovou zkratku `SALHOTKEY(VK_F10, HOTKEYF_CONTROL | HOTKEYF_SHIFT)` položce `Calculate &Size (server)`.
+  - V `src/fs2.cpp` přidat `FS_SERVICE_CALCULATEOCCUPIEDSPACE` a povolit příkazy `SALCMD_CALCDIRSIZES` a `SALCMD_OCCUPIEDSPACE` v `ContextMenu()` s namapováním na `MENUCMD_CALCSIZE`.
 
 ---
 

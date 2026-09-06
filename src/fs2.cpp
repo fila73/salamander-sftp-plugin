@@ -866,6 +866,7 @@ CPluginFSInterface::GetSupportedServices()
            FS_SERVICE_GETNEXTDIRLINEHOTPATH |
            FS_SERVICE_GETCHANGEDRIVEORDISCONNECTITEM |
            FS_SERVICE_SHOWSECURITYINFO |
+           FS_SERVICE_CALCULATEOCCUPIEDSPACE |
            FS_SERVICE_GETPATHFORMAINWNDTITLE;
 }
 
@@ -2376,10 +2377,18 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
             mi.cbSize = sizeof(mi);
             mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
             mi.fType = MFT_STRING;
-            mi.wID = salCmd + 1000; // shift Salamander commands by 1000 so they differ from ours
+            if (salCmd == SALCMD_CALCDIRSIZES || salCmd == SALCMD_OCCUPIEDSPACE)
+            {
+                mi.wID = MENUCMD_CALCSIZE;
+                mi.fState = MFS_ENABLED;
+            }
+            else
+            {
+                mi.wID = salCmd + 1000; // shift Salamander commands by 1000 so they differ from ours
+                mi.fState = enabled ? MFS_ENABLED : MFS_DISABLED;
+            }
             mi.dwTypeData = nameBuf;
             mi.cch = (UINT)strlen(nameBuf);
-            mi.fState = enabled ? MFS_ENABLED : MFS_DISABLED;
             InsertMenuItem(menu, i++, TRUE, &mi);
 
             // Insert Execute directly after Open (SALCMD_OPEN) without any separator
@@ -2419,6 +2428,10 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
         if (cmd == MENUCMD_EXECUTEFILE)
         {
             SalamanderGeneral->PostMenuExtCommand(MENUCMD_EXECUTEFILE, TRUE);
+        }
+        else if (cmd == MENUCMD_CALCSIZE)
+        {
+            SalamanderGeneral->PostMenuExtCommand(MENUCMD_CALCSIZE, TRUE);
         }
         else if (cmd >= 1000) // the user selected a Salamander command
         {
