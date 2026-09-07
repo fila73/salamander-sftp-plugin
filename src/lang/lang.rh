@@ -62,6 +62,7 @@
 #define IDC_PATHSTRING                  531
 #define IDC_FILECHECK                   532
 #define IDD_PROGRESSDLG                 540
+#define IDD_CALCSIZEDLG                 543
 #define IDT_FILENAME                    541
 #define IDD_CMDEXEC                     610
 #define IDC_CMD_INFO                    611

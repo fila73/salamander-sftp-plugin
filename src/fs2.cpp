@@ -157,6 +157,139 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 //
 // ****************************************************************************
+// CCalcSizeProgressDlg
+//
+
+CCalcSizeProgressDlg::CCalcSizeProgressDlg(HWND parent, CObjectOrigin origin)
+    : CCommonDialog(HLanguage, IDD_CALCSIZEDLG, parent, origin)
+{
+    ProgressBar = NULL;
+    WantCancel = FALSE;
+    LastTickCount = 0;
+    TextCache[0] = 0;
+    TextCacheIsDirty = FALSE;
+    ProgressCache = 0;
+    ProgressCacheIsDirty = FALSE;
+}
+
+void CCalcSizeProgressDlg::Set(const char* fileName, DWORD progress, BOOL dalayedPaint)
+{
+    lstrcpyn(TextCache, fileName != NULL ? fileName : "", MAX_PATH);
+    TextCacheIsDirty = TRUE;
+
+    if (progress != ProgressCache)
+    {
+        ProgressCache = progress;
+        ProgressCacheIsDirty = TRUE;
+    }
+
+    if (!dalayedPaint)
+        FlushDataToControls();
+}
+
+void CCalcSizeProgressDlg::EnableCancel(BOOL enable)
+{
+    if (HWindow != NULL)
+    {
+        HWND cancel = GetDlgItem(HWindow, IDCANCEL);
+        if (IsWindowEnabled(cancel) != enable)
+        {
+            EnableWindow(cancel, enable);
+            if (enable)
+                SetFocus(cancel);
+            PostMessage(cancel, BM_SETSTYLE, enable ? BS_DEFPUSHBUTTON : BS_PUSHBUTTON, TRUE);
+
+            MSG msg;
+            while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            {
+                if (!IsWindow(HWindow) || !IsDialogMessage(HWindow, &msg))
+                {
+                    TranslateMessage(&msg);
+                    DispatchMessage(&msg);
+                }
+            }
+        }
+    }
+}
+
+BOOL CCalcSizeProgressDlg::GetWantCancel()
+{
+    MSG msg;
+    while (PeekMessage(&msg, NULL, 0, 0, TRUE))
+    {
+        if (!IsWindow(HWindow) || !IsDialogMessage(HWindow, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    DWORD ticks = GetTickCount();
+    if (ticks - LastTickCount > 100)
+    {
+        LastTickCount = ticks;
+        FlushDataToControls();
+    }
+
+    return WantCancel;
+}
+
+void CCalcSizeProgressDlg::FlushDataToControls()
+{
+    if (HWindow != NULL)
+    {
+        if (TextCacheIsDirty)
+        {
+            SetDlgItemText(HWindow, IDT_FILENAME, TextCache);
+            TextCacheIsDirty = FALSE;
+        }
+
+        if (ProgressCacheIsDirty)
+        {
+            if (ProgressBar != NULL)
+                ProgressBar->SetProgress(ProgressCache, NULL);
+            ProgressCacheIsDirty = FALSE;
+        }
+    }
+}
+
+INT_PTR
+CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    CALL_STACK_MESSAGE4("CCalcSizeProgressDlg::DialogProc(0x%X, 0x%IX, 0x%IX)", uMsg, wParam, lParam);
+    switch (uMsg)
+    {
+    case WM_INITDIALOG:
+    {
+        ProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_PROGRESSBAR);
+        if (ProgressBar == NULL)
+        {
+            DestroyWindow(HWindow);
+            return FALSE;
+        }
+        break;
+    }
+
+    case WM_COMMAND:
+    {
+        if (LOWORD(wParam) == IDCANCEL)
+        {
+            if (!WantCancel)
+            {
+                FlushDataToControls();
+                WantCancel = TRUE;
+                EnableCancel(FALSE);
+            }
+            return TRUE;
+        }
+        break;
+    }
+    }
+    return CCommonDialog::DialogProc(uMsg, wParam, lParam);
+}
+
+//
+// ****************************************************************************
 // Transfer progress (with speed)
 //
 
@@ -1370,7 +1503,7 @@ static void LocalDeleteRecursive(const char* path, bool isDir)
 }
 
 // recursive sum of remote directory size with cancellation check and symlink cycle protection
-static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, bool& cancelled, CDeleteProgressDlg* progDlg, int depth = 0)
+static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, bool& cancelled, CCalcSizeProgressDlg* progDlg, int depth = 0)
 {
     if (cancelled || depth > 50)
         return 0;
@@ -1383,9 +1516,7 @@ static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, b
 
     if (progDlg != NULL)
     {
-        char progressText[MAX_PATH + 64];
-        _snprintf_s(progressText, _TRUNCATE, "Scanning: %s", remote);
-        progDlg->Set(progressText, 0, TRUE);
+        progDlg->Set(remote, 0, TRUE);
     }
 
     unsigned __int64 total = 0;
@@ -1479,11 +1610,11 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
         mainWnd = pw;
     EnableWindow(mainWnd, FALSE);
 
-    CDeleteProgressDlg* progDlg = new CDeleteProgressDlg(mainWnd, ooStatic);
+    CCalcSizeProgressDlg* progDlg = new CCalcSizeProgressDlg(mainWnd, ooStatic);
     if (progDlg != NULL && progDlg->Create() != NULL)
     {
         SetForegroundWindow(progDlg->HWindow);
-        progDlg->Set("Calculating directory size on server...", 0, FALSE);
+        progDlg->Set("...", 0, FALSE);
     }
     else
     {
@@ -1516,13 +1647,11 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
 
                 if (progDlg != NULL)
                 {
-                    char buf[MAX_PATH + 32];
-                    _snprintf_s(buf, _TRUNCATE, "Scanning %s...", f->Name);
-                    progDlg->Set(buf, 0, FALSE);
+                    progDlg->Set(f->Name, 0, FALSE);
                 }
 
-                // Try fast server-side calculation (du / find) first
-                if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs))
+                // Try fast server-side calculation (du / find) first with privilege elevation
+                if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs, true))
                 {
                     // Fall back to recursive SFTP scan with cancel check
                     dirSize = SftpDirSize(remote, subFiles, subDirs, cancelled, progDlg);
@@ -1640,8 +1769,8 @@ void SftpOnSpacePressedOnFolder(int panel, const CFileData* f)
     unsigned __int64 dirSize = 0;
     int subFiles = 0, subDirs = 0;
 
-    // Try fast server-side calculation (du / find) first
-    if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs))
+    // Try fast server-side calculation (du only, no find) first with privilege elevation
+    if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs, false))
     {
         bool cancelled = false;
         dirSize = SftpDirSize(remote, subFiles, subDirs, cancelled, NULL);

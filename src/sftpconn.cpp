@@ -1,5 +1,6 @@
 // Copyright © 2026 Dupl3xx
 #include "sftpconn.h"
+#include "sftpglue.h"
 #include <ws2tcpip.h>
 #include <mstcpip.h>
 #include <stdio.h>
@@ -183,6 +184,8 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     // authentication: key / password / keyboard-interactive
     if (!Authenticate(user, password, keyFile)) { Disconnect(); return false; }
 
+    SftpServerCmd = (sftpServer && *sftpServer) ? sftpServer : "";
+
     if (protocol == 1)
     {
         // explicit SCP - do not use SFTP subsystem
@@ -214,6 +217,7 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
 void CSftpConnection::Disconnect()
 {
     ScpMode = false;
+    SftpServerCmd.clear();
     if (Sftp) { libssh2_sftp_shutdown(Sftp); Sftp = nullptr; }
     if (Session)
     {
@@ -808,6 +812,8 @@ static unsigned long RwxToMode(const char* rwx)
 bool CSftpConnection::ExecRaw(const char* command, std::string& out, int* exitCode)
 {
     out.clear();
+    if (exitCode != nullptr)
+        *exitCode = -1;
     LIBSSH2_CHANNEL* ch = libssh2_channel_open_session(Session);
     if (!ch) { SetError("Opening channel"); return false; }
     if (libssh2_channel_exec(ch, command))
@@ -817,12 +823,29 @@ bool CSftpConnection::ExecRaw(const char* command, std::string& out, int* exitCo
         return false;
     }
     char buf[8192];
+    while (!libssh2_channel_eof(ch))
+    {
+        ssize_t n = libssh2_channel_read(ch, buf, sizeof(buf));
+        if (n > 0)
+            out.append(buf, (size_t)n);
+        else if (n < 0 && n != LIBSSH2_ERROR_EAGAIN)
+            break;
+        n = libssh2_channel_read_stderr(ch, buf, sizeof(buf));
+        if (n > 0)
+            out.append(buf, (size_t)n);
+        else if (n < 0 && n != LIBSSH2_ERROR_EAGAIN)
+            break;
+    }
     ssize_t n;
     while ((n = libssh2_channel_read(ch, buf, sizeof(buf))) > 0)
         out.append(buf, (size_t)n);
     while ((n = libssh2_channel_read_stderr(ch, buf, sizeof(buf))) > 0)
         out.append(buf, (size_t)n);
+
+    libssh2_channel_send_eof(ch);
+    libssh2_channel_wait_eof(ch);
     libssh2_channel_close(ch);
+    libssh2_channel_wait_closed(ch);
     if (exitCode != nullptr)
         *exitCode = libssh2_channel_get_exit_status(ch);
     libssh2_channel_free(ch);
@@ -843,7 +866,7 @@ bool CSftpConnection::ExecSimple(const char* command)
     return true;
 }
 
-bool CSftpConnection::FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs)
+bool CSftpConnection::FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs, bool countItems)
 {
     outBytes = 0;
     outFiles = 0;
@@ -856,10 +879,13 @@ bool CSftpConnection::FastDirSize(const char* remotePath, unsigned __int64& outB
 
     // Try server-side du command first: du -sb -- <path> (GNU du / Linux / TrueNAS SCALE)
     // or du -sk -- <path> (POSIX / BSD / FreeBSD / TrueNAS CORE)
-    std::string cmd = "du -sb -- " + q + " 2>/dev/null || du -sk -- " + q + " 2>/dev/null";
+    std::string rawCmd = "du -sb -- " + q + " 2>/dev/null || du -sk -- " + q + " 2>/dev/null";
+    char wrappedCmd[2048];
+    WrapCommandWithSftpServerPrefix(SftpServerCmd.c_str(), rawCmd.c_str(), wrappedCmd, sizeof(wrappedCmd));
+
     std::string out;
     int code = -1;
-    if (!ExecRaw(cmd.c_str(), out, &code) || code != 0 || out.empty())
+    if (!ExecRaw(wrappedCmd, out, &code) || code != 0 || out.empty())
         return false;
 
     unsigned __int64 val = _strtoui64(out.c_str(), nullptr, 10);
@@ -870,17 +896,23 @@ bool CSftpConnection::FastDirSize(const char* remotePath, unsigned __int64& outB
     bool isBytes = (out.find("invalid option") == std::string::npos && out.find("illegal option") == std::string::npos);
     outBytes = isBytes ? val : (val * 1024);
 
-    // Also count files and directories via find
-    std::string cntCmd = "find " + q + " -type f 2>/dev/null | wc -l; find " + q + " -mindepth 1 -type d 2>/dev/null | wc -l";
-    std::string cntOut;
-    int cntCode = -1;
-    if (ExecRaw(cntCmd.c_str(), cntOut, &cntCode) && cntCode == 0 && !cntOut.empty())
+    // Count files and directories via find when requested (for Calculate Size dialog)
+    if (countItems)
     {
-        int f = 0, d = 0;
-        if (sscanf_s(cntOut.c_str(), "%d\n%d", &f, &d) >= 1)
+        std::string rawCnt = "find " + q + " -type f 2>/dev/null | wc -l; find " + q + " -mindepth 1 -type d 2>/dev/null | wc -l";
+        char wrappedCnt[2048];
+        WrapCommandWithSftpServerPrefix(SftpServerCmd.c_str(), rawCnt.c_str(), wrappedCnt, sizeof(wrappedCnt));
+
+        std::string cntOut;
+        int cntCode = -1;
+        if (ExecRaw(wrappedCnt, cntOut, &cntCode) && cntCode == 0 && !cntOut.empty())
         {
-            outFiles = f;
-            outDirs = d;
+            int f = 0, d = 0;
+            if (sscanf_s(cntOut.c_str(), "%d\n%d", &f, &d) >= 1)
+            {
+                outFiles = f;
+                outDirs = d;
+            }
         }
     }
 

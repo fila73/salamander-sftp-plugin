@@ -45,7 +45,7 @@ public:
     bool ListDir(const char* remotePath, std::vector<CSftpEntry>& out);
 
     // Fast server-side directory size calculation via exec (du / find). Returns false if not supported.
-    bool FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs);
+    bool FastDirSize(const char* remotePath, unsigned __int64& outBytes, int& outFiles, int& outDirs, bool countItems = true);
 
     // Download remote file to local. resumeOffset>0 = resume from given position
     // (SFTP only; SCP cannot resume). Returns current remote file size in *remoteSize.
@@ -144,6 +144,7 @@ private:
     LIBSSH2_SESSION* Session;
     LIBSSH2_SFTP* Sftp;
     std::string ErrorMsg;
+    std::string SftpServerCmd;
 
     static ProgressFn Progress;
     static void* ProgressCtx;

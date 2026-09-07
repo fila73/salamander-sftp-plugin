@@ -452,6 +452,36 @@ protected:
 
 //
 // ****************************************************************************
+// CCalcSizeProgressDlg
+//
+// dedicated progress dialog for Calculate Size operation on the FS
+
+class CCalcSizeProgressDlg : public CCommonDialog
+{
+protected:
+    CGUIProgressBarAbstract* ProgressBar;
+    BOOL WantCancel;
+    DWORD LastTickCount;
+
+    char TextCache[MAX_PATH];
+    BOOL TextCacheIsDirty;
+    DWORD ProgressCache;
+    BOOL ProgressCacheIsDirty;
+
+public:
+    CCalcSizeProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
+
+    void Set(const char* fileName, DWORD progress, BOOL dalayedPaint);
+    BOOL GetWantCancel();
+
+protected:
+    virtual INT_PTR DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
+    void EnableCancel(BOOL enable);
+    void FlushDataToControls();
+};
+
+//
+// ****************************************************************************
 // CPluginFSDataInterface
 //
 
