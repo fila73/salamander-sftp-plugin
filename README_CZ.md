@@ -19,7 +19,7 @@ Tento fork přináší řadu oprav stability, architektonických vylepšení, zv
 | **Sestavení a závislosti** | Vyžadovalo externí `libssh2.dll` a dynamické MinGW runtime DLL (`libwinpthread-1.dll` atd.) | **Samostatný build bez závislostí**: `libssh2` je přímo staticky integrován; C/C++ runtime i pthreads jsou linkovány staticky (`-static`). Vyžaduje pouze standardní `libcrypto-3-x64.dll`. |
 | **Spouštění příkazů na serveru** | Základní provádění | **Asynchronní neblokující spouštění na pozadí** přes dedikované SSH spojení; nastavitelné okno konzole (Consolas font, zalamování textu, tlačítko Storno/Cancel). |
 | **Udržování spojení (Keepalive)** | Základní TCP / idle obsluha | **Aktivní periodický FS timer keepalive** (interval 8 s) zabraňující odpojení na serverech TrueNAS / OpenSSH (`ClientAliveInterval`) a stavových firewallech; neblokující detekce zdraví socketu a transparentní auto-reconnect. |
-| **Výpočet velikosti složek** | Standardní procházení | **Bleskový server-side výpočet** (`FastDirSize` přes SSH `du -sb`), nezamrzající přerušitelný dialog průběhu, ochrana proti symlinkovým cyklům a integrace klávesové zkratky **`Ctrl+Shift+F10`** i kontextového menu. |
+| **Výpočet velikosti složek** | Standardní procházení | **Bleskový server-side výpočet** (`FastDirSize` přes SSH `du -sb`), nezamrzající přerušitelný dialog průběhu, ochrana proti symlinkovým cyklům, **stisk mezerníku na složce** s výpočtem a posunem kurzoru a integrace klávesové zkratky **`Ctrl+Shift+F10`** i kontextového menu. |
 | **Navigace v adresářích** | Reset fokusu při přechodu nahoru | **Zachování fokusu kurzoru** na opuštěné složce při přechodu do nadřazeného adresáře (`..`). |
 | **Stabilita čtení složek** | Možné zacyklení u velkých/specifických složek | **Oprava zacyklení a stránkování** v SFTP listingu; podpora vlastního příkazu `sftp-server` a správná expanze domovské složky (`~`). |
 | **Uživatelské rozhraní** | Standardní dialogy, možné zadrhávání oken | **Tlačítko pro zobrazení hesla** (ikona oka), okamžité ukládání profilů, oprava plynulosti pohybu oken, High-DPI podpora a sjednocený tmavý režim (Dark Mode). |
@@ -57,7 +57,7 @@ Vše se vyjednává automaticky dle možností serveru:
 - **Navazování přerušených přenosů (resume)** – pokračování od poslední pozice (SFTP)
 - Mazání, vytváření adresářů, přejmenování, **změna oprávnění (`chmod`)**, vlastnosti souborů
 - **Úprava souboru přímo na serveru** (`F4` – stáhne soubor do dočasné složky, otevře výchozí editor a po uložení automaticky nahraje zpět)
-- **Výpočet velikosti složek na serveru** (`Ctrl+Shift+F10`, rychlý server-side `du` výpočet s rekurzivním fallbackem, nezamrzající dialog průběhu s tlačítkem Storno, ochrana proti symlinkovým cyklům a okamžitá aktualizace velikosti v panelu)
+- **Výpočet velikosti složek na serveru** (`Ctrl+Shift+F10` / mezerník na složce, rychlý server-side `du` výpočet s rekurzivním fallbackem, nezamrzající dialog průběhu s tlačítkem Storno, ochrana proti symlinkovým cyklům a okamžitá aktualizace velikosti v panelu)
 - **Spouštění příkazů na serveru**:
   - Přímo z příkazového řádku Salamandera pod panely
   - Kontextová položka **`Execute`** (umístěná přímo pod `Open`)
@@ -84,9 +84,9 @@ Vše se vyjednává automaticky dle možností serveru:
 ### Integrace do Salamandera
 | Soubor | Účel |
 |--------|------|
-| `sftp.cpp` | Vstupní bod pluginu, registrace (FS název `dfs`), směrování příkazů menu, registrace klávesových zkratek, načítání a ukládání relací do registru. |
-| `fs1.cpp` | **Přihlašovací dialog** (`ConnectDlgProc`) – strom kategorií, profily připojení, správa relací, zachování fokusu při procházení do `..`. |
-| `fs2.cpp` | **Implementace FS rozhraní** – ChangePath, ListCurrentPath, stahování a nahrávání souborů, mazání, tvorba složek, rychlé přejmenování, chmod, kontextové menu. |
+| `sftp.cpp` | Vstupní bod pluginu, registrace (FS název `dfs`), směrování příkazů menu, Windows message hook pro mezerník, registrace klávesových zkratek, načítání a ukládání relací do registru. |
+| `fs1.cpp` | **Přihlašovací dialog** (`ConnectDlgProc`) – strom kategorií, profily připojení, správa relací, sledování aktivních FS, zachování fokusu při procházení do `..`. |
+| `fs2.cpp` | **Implementace FS rozhraní** – ChangePath, ListCurrentPath, stahování a nahrávání souborů, mazání, tvorba složek, rychlé přejmenování, chmod, SftpOnSpacePressedOnFolder, kontextové menu. |
 | `menu.cpp` | Obsluha položek menu pluginu (úprava souboru, výpočet velikosti, odpojení, spuštění). |
 | `sftp.h` | Společné deklarace rozhraní a datových struktur. |
 

@@ -226,10 +226,20 @@ class CPluginInterfaceForFS : public CPluginInterfaceForFSAbstract
 {
 protected:
     int ActiveFSCount; // number of active FS interfaces (only to verify deallocation)
+    std::vector<CPluginFSInterfaceAbstract*> ActiveFSList;
 
 public:
     CPluginInterfaceForFS() { ActiveFSCount = 0; }
     int GetActiveFSCount() { return ActiveFSCount; }
+    bool IsOurFS(CPluginFSInterfaceAbstract* fs) const
+    {
+        for (size_t i = 0; i < ActiveFSList.size(); i++)
+        {
+            if (ActiveFSList[i] == fs)
+                return true;
+        }
+        return false;
+    }
 
     virtual CPluginFSInterfaceAbstract* WINAPI OpenFS(const char* fsName, int fsNameIndex);
     virtual void WINAPI CloseFS(CPluginFSInterfaceAbstract* fs);
@@ -256,6 +266,10 @@ public:
 
     virtual void WINAPI EnsureShareExistsOnServer(int panel, const char* server, const char* share) {}
 };
+
+extern CPluginInterfaceForFS InterfaceForFS;
+
+void SftpOnSpacePressedOnFolder(int panel, const CFileData* f);
 
 class CPluginInterface : public CPluginInterfaceAbstract
 {

@@ -85,13 +85,15 @@ Při výpočtu velikosti složek (`Calculate Size (server)`):
 5. **Klávesová zkratka `Ctrl+Shift+F10` & Kontextové menu**:
    - V `sftp.cpp` je pro položku `Calculate &Size (server)` registrována zkratka `SALHOTKEY(VK_F10, HOTKEYF_CONTROL | HOTKEYF_SHIFT)`.
    - V `fs2.cpp` (`ContextMenu()`) a v `GetSupportedServices()` (`FS_SERVICE_CALCULATEOCCUPIEDSPACE`) jsou standardní příkazy Salamandera `SALCMD_CALCDIRSIZES` a `SALCMD_OCCUPIEDSPACE` povoleny a přesměrovány na obsluhu `MENUCMD_CALCSIZE`.
-6. **Architektonické omezení mezerníku (Spacebar) v jádře Open Salamandera**:
-   - V jádře Open Salamandera (`fileswn0.cpp:1082-1087`) je stisk mezerníku (`VK_SPACE`) obsloužen pouze pro lokální disk (`ptDisk`) a ZIP archivy (`ptZIPArchive`). Pro pluginy (`ptPluginFS`) má Salamander explicitní poznámku `// to be implemented` a stisk mezerníku pouze invertuje výběr položky bez volání pluginu.
-   - Stejně tak globální enabler `EnablerCalcDirSizes` v hlavním okně Salamandera (`mainwnd1.cpp:2863`) omezuje volání pouze na `onDisk || archive`. Z toho důvodu plugin definuje vlastní položku menu a zkratku `Ctrl+Shift+F10`, která funguje nezávisle na enablerech jádra.
+6. **Řešení mezerníku (Spacebar) přes Windows Message Hook**:
+   - V jádře Open Salamandera (`fileswn0.cpp:1082-1087`) je stisk mezerníku (`VK_SPACE`) pro pluginy (`ptPluginFS`) označen poznámkou `// to be implemented` a stisk mezerníku pouze invertuje výběr položky jako klávesa Insert bez volání pluginu.
+   - K překonání tohoto omezení plugin instaluje vláknový Windows Message Hook (`SetWindowsHookEx(WH_GETMESSAGE, GetMsgHookProc, NULL, GetCurrentThreadId())`).
+   - Hook zachytí `WM_KEYDOWN` s `VK_SPACE`, ověří, že uživatel nepíše do editboxu a že je aktivní panel s naším pluginem (`InterfaceForFS.IsOurFS(activeFS)`).
+   - Zprávu zkonzumuje (`pMsg->message = WM_NULL`) a provede `SftpOnSpacePressedOnFolder`: invertuje výběr složky (`SelectPanelItem`), spočítá velikost přes `FastDirSize`, zapíše velikost do `CFileData`, překreslí panel (`RepaintChangedItems`) a posune kurzor na další položku.
 
 ---
 
-## 5. Statické linkování a distribuce na jiné počítače
+## 6. Statické linkování a distribuce na jiné počítače
 
 Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
 - **Statické runtimes**: `Makefile.mingw` používá `-static -static-libgcc -static-libstdc++`, což eliminuje závislosti na `libwinpthread-1.dll`, `libgcc_s_seh-1.dll` i `libstdc++-6.dll`.

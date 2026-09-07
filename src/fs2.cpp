@@ -1585,6 +1585,89 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
     }
 }
 
+void SftpOnSpacePressedOnFolder(int panel, const CFileData* f)
+{
+    if (!f || !f->Name || strcmp(f->Name, "..") == 0)
+        return;
+
+    CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(panel);
+    if (fs == NULL)
+        return;
+
+    HWND hMain = SalamanderGeneral->GetMainWindowHWND();
+    if (!SftpEnsureConnected(hMain))
+        return;
+
+    char folderName[MAX_PATH];
+    lstrcpyn(folderName, f->Name, MAX_PATH);
+
+    // Locate the focused item and the subsequent item in the panel
+    int itIdx = 0;
+    BOOL itemIsDir = FALSE;
+    const CFileData* item = NULL;
+    const CFileData* targetF = NULL;
+    const CFileData* nextF = NULL;
+    bool foundCurrent = false;
+
+    while ((item = SalamanderGeneral->GetPanelItem(panel, &itIdx, &itemIsDir)) != NULL)
+    {
+        if (!foundCurrent)
+        {
+            if (item == f || (item->Name && strcmp(item->Name, folderName) == 0))
+            {
+                targetF = item;
+                foundCurrent = true;
+            }
+        }
+        else
+        {
+            nextF = item;
+            break;
+        }
+    }
+
+    if (!targetF)
+        targetF = f;
+
+    // 1. Toggle selection on the folder item (standard Salamander spacebar behavior)
+    BOOL newSelected = !targetF->Selected;
+    SalamanderGeneral->SelectPanelItem(panel, targetF, newSelected);
+
+    // 2. Calculate folder size on the server
+    char remote[MAX_PATH];
+    SftpJoin(fs->Path, folderName, remote, MAX_PATH);
+
+    unsigned __int64 dirSize = 0;
+    int subFiles = 0, subDirs = 0;
+
+    // Try fast server-side calculation (du / find) first
+    if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs))
+    {
+        bool cancelled = false;
+        dirSize = SftpDirSize(remote, subFiles, subDirs, cancelled, NULL);
+    }
+
+    CFileData* nonConstF = const_cast<CFileData*>(targetF);
+    nonConstF->Size.SetUI64(dirSize);
+    nonConstF->SizeValid = 1;
+    nonConstF->Dirty = 1;
+
+    // 3. Move focus / caret to the next item
+    if (nextF != NULL)
+    {
+        SalamanderGeneral->SetPanelFocusedItem(panel, nextF, FALSE);
+    }
+
+    SalamanderGeneral->RepaintChangedItems(panel);
+
+    HWND hFocus = GetFocus();
+    if (hFocus != NULL)
+    {
+        InvalidateRect(hFocus, NULL, TRUE);
+        UpdateWindow(hFocus);
+    }
+}
+
 // directory synchronization: direction 0 = download (server->PC), 1 = upload (PC->server).
 // Only transfers missing and changed files (size + time comparison).
 void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction)

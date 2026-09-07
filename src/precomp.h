@@ -24,6 +24,8 @@
 #include <process.h>
 #include <commctrl.h>
 #include <ostream>
+#include <vector>
+#include <string>
 #include <stdio.h>
 #include <time.h>
 

@@ -131,6 +131,61 @@ char* LoadStr(int resID)
     return SalamanderGeneral->LoadStr(HLanguage, resID);
 }
 
+// Hook procedure for panel Spacebar key detection on SFTP folders
+static HHOOK s_hGetMsgHook = NULL;
+
+static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode >= 0 && wParam == PM_REMOVE)
+    {
+        MSG* pMsg = (MSG*)lParam;
+        if (pMsg && pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_SPACE)
+        {
+            // Check modifier keys: no Ctrl, no Alt, no Shift
+            bool noModifiers = (GetKeyState(VK_MENU) >= 0) && (GetKeyState(VK_CONTROL) >= 0) && (GetKeyState(VK_SHIFT) >= 0);
+            if (noModifiers && SalamanderGeneral != NULL)
+            {
+                HWND hMain = SalamanderGeneral->GetMainWindowHWND();
+                HWND hActive = GetActiveWindow();
+
+                // Only intercept when main Salamander window is active AND no dialogs/popups are open over it
+                if (hMain != NULL && (hActive == hMain || GetForegroundWindow() == hMain) &&
+                    GetLastActivePopup(hMain) == hMain && pMsg->hwnd != NULL)
+                {
+                    HWND hRoot = GetAncestor(pMsg->hwnd, GA_ROOT);
+                    if (hRoot == hMain)
+                    {
+                        char className[64] = {0};
+                        GetClassNameA(pMsg->hwnd, className, sizeof(className));
+
+                        // Do not intercept if user is typing in Edit, RichEdit or ComboBox (e.g. command line)
+                        bool isTypingControl = (_stricmp(className, "Edit") == 0 ||
+                                                _strnicmp(className, "RichEdit", 8) == 0 ||
+                                                _stricmp(className, "ComboBox") == 0 ||
+                                                _stricmp(className, "ComboLBox") == 0);
+
+                        if (!isTypingControl)
+                        {
+                            CPluginFSInterfaceAbstract* activeFS = SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
+                            if (activeFS != NULL && InterfaceForFS.IsOurFS(activeFS))
+                            {
+                                BOOL isDir = FALSE;
+                                const CFileData* f = SalamanderGeneral->GetPanelFocusedItem(PANEL_SOURCE, &isDir);
+                                if (f != NULL && isDir && strcmp(f->Name, "..") != 0)
+                                {
+                                    pMsg->message = WM_NULL; // Consume key event
+                                    SftpOnSpacePressedOnFolder(PANEL_SOURCE, f);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return CallNextHookEx(s_hGetMsgHook, nCode, wParam, lParam);
+}
+
 void OnConfiguration(HWND hParent)
 {
     static BOOL InConfiguration = FALSE;
@@ -529,6 +584,11 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
         SalamanderGeneral->PostUnloadThisPlugin();                                    // after all commands are processed the plugin unloads (keeping it loaded would be pointless)
     }
 
+    if (!s_hGetMsgHook)
+    {
+        s_hGetMsgHook = SetWindowsHookEx(WH_GETMESSAGE, GetMsgHookProc, NULL, GetCurrentThreadId());
+    }
+
     return &PluginInterface;
 }
 
@@ -547,6 +607,13 @@ BOOL WINAPI
 CPluginInterface::Release(HWND parent, BOOL force)
 {
     CALL_STACK_MESSAGE2("CPluginInterface::Release(, %d)", force);
+
+    if (s_hGetMsgHook)
+    {
+        UnhookWindowsHookEx(s_hGetMsgHook);
+        s_hGetMsgHook = NULL;
+    }
+
     BOOL ret = ViewerWindowQueue.Empty();
     if (!ret && (force || SalamanderGeneral->SalMessageBox(parent, LoadStr(IDS_VIEWER_OPENWNDS),
                                                            LoadStr(IDS_PLUGINNAME),

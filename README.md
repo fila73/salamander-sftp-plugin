@@ -19,7 +19,7 @@ This fork introduces significant stability fixes, architecture improvements, enh
 | **Build & Dependencies** | Required external `libssh2.dll` and dynamic MinGW runtime DLLs (`libwinpthread-1.dll`, etc.) | **Standalone zero-dependency build**: `libssh2` is statically embedded; C/C++ runtime & pthreads linked statically (`-static`). Only `libcrypto-3-x64.dll` is required. |
 | **Command Execution** | Basic execution | **Asynchronous non-blocking background execution** with dedicated SSH connection; resizable streaming console dialog (Consolas font, text wrap, Cancel button). |
 | **Connection Keepalive** | Basic TCP / idle handling | **Active periodic FS timer keepalive** (8s interval) preventing disconnects on TrueNAS / OpenSSH (`ClientAliveInterval`) and stateful firewalls; non-blocking socket health check & auto-reconnect. |
-| **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
+| **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, **Spacebar on folder** calculation with auto-advance, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
 | **Directory Navigation** | Reset focus on parent entry | **Preserves cursor focus** on the exited folder when navigating up (`..`). |
 | **Directory Listing Stability** | Potential loops on large/complex directories | **Loop detection & paging fixes** in SFTP listing; custom `sftp-server` command support and home directory (`~`) resolution. |
 | **UI & Usability** | Standard dialogs, potential window lag | **Password visibility toggle** (eye icon), immediate profile saving, smooth window dragging fix, High-DPI awareness, and dark mode theme alignment. |
@@ -57,7 +57,7 @@ Negotiated automatically based on server capabilities:
 - **Resume interrupted transfers** – byte-exact resume from last position (SFTP)
 - Delete, create directory, rename, **change permissions (`chmod`)**, properties
 - **Edit file on server** (`F4` – downloads to temp, opens configured editor, automatically re-uploads on save)
-- **Calculate directory size** (`Ctrl+Shift+F10`, fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
+- **Calculate directory size** (`Ctrl+Shift+F10` / Spacebar on folder, fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
 - **Remote Command Execution**:
   - Direct execution via Open Salamander command line bar below panels
   - Context menu item **`Execute`** (located right after `Open`)
@@ -84,9 +84,9 @@ Negotiated automatically based on server capabilities:
 ### Salamander Integration
 | File | Purpose |
 |------|---------|
-| `sftp.cpp` | Plugin entry point, registration (FS name `dfs`), menu command routing, registry configuration loading/saving. |
-| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, connection profiles, saved sessions management, directory navigation focus preservation. |
-| `fs2.cpp` | **FS interface implementation** – ChangePath, ListCurrentPath, copy/download/upload (with resume/overwrite dialogs), Delete, CreateDir, QuickRename, ChangeAttributes (chmod), ShowProperties, ExecuteCommandLine, context menu. |
+| `sftp.cpp` | Plugin entry point, registration (FS name `dfs`), menu command routing, window message hook for Spacebar calculation, registry configuration loading/saving. |
+| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, connection profiles, saved sessions management, active FS tracking, directory navigation focus preservation. |
+| `fs2.cpp` | **FS interface implementation** – ChangePath, ListCurrentPath, copy/download/upload (with resume/overwrite dialogs), Delete, CreateDir, QuickRename, ChangeAttributes (chmod), ShowProperties, SftpOnSpacePressedOnFolder, context menu. |
 | `menu.cpp` | Menu command handlers (Edit file, Calculate size, Disconnect, Execute). |
 | `sftp.h` | Shared declarations, `CFSData` (column attributes), command constants. |
 

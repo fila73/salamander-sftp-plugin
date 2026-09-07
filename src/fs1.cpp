@@ -72,20 +72,25 @@ void ReleaseFS()
 CPluginFSInterfaceAbstract* WINAPI
 CPluginInterfaceForFS::OpenFS(const char* fsName, int fsNameIndex)
 {
-
-    // this is where a dedicated FS object should be created for each fsNameIndex...
-
-    // 'fsName' shows how the user typed the FS name ("Ftp", "ftp", "FTP",
-    // etc. - it is still the same FS name)
-
     ActiveFSCount++;
-    return new CPluginFSInterface;
+    CPluginFSInterface* fs = new CPluginFSInterface;
+    ActiveFSList.push_back(fs);
+    return fs;
 }
 
 void WINAPI
 CPluginInterfaceForFS::CloseFS(CPluginFSInterfaceAbstract* fs)
 {
     CPluginFSInterface* dfsFS = (CPluginFSInterface*)fs; // to ensure the correct destructor is invoked
+
+    for (auto it = ActiveFSList.begin(); it != ActiveFSList.end(); ++it)
+    {
+        if (*it == fs)
+        {
+            ActiveFSList.erase(it);
+            break;
+        }
+    }
 
     if (dfsFS == LastDetachedFS)
         LastDetachedFS = NULL;
