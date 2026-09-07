@@ -87,9 +87,9 @@ static void LoadBundledLibssh2()
     char* slash = strrchr(path, '\\');
     if (slash == nullptr)
         return;
-    // order: first OpenSSL (dependency of libssh2 and our direct import), then libssh2
-    const char* dlls[] = {"libcrypto-3-x64.dll", "libssh2.dll"};
-    for (int i = 0; i < 2; i++)
+    // order: dependencies first (zlib, OpenSSL), then libssh2
+    const char* dlls[] = {"z.dll", "libcrypto-3-x64.dll", "libssh2.dll"};
+    for (int i = 0; i < 3; i++)
     {
         strcpy(slash + 1, dlls[i]);
         LoadLibraryExA(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);

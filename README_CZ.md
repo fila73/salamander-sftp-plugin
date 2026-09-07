@@ -128,7 +128,7 @@ Plugin lze jednoduše přeložit pomocí přiloženého `Makefile.mingw`:
 mingw32-make -f Makefile.mingw CROSS_COMPILE=
 ```
 
-Výsledkem jsou zkompilované binárky `sftp.spl`, `english.slg` a `czech.slg` se staticky přilinkovaným C/C++ runtimem (bez závislosti na MinGW DLL). Pro provoz na jiných PC stačí do složky pluginu přiložit přiložené 64bitové knihovny `libcrypto-3-x64.dll` a `libssh2.dll`.
+Výsledkem jsou zkompilované binárky `sftp.spl`, `english.slg` a `czech.slg` se staticky přilinkovaným C/C++ runtimem (bez závislosti na MinGW DLL). Pro provoz na jiných PC stačí do složky pluginu přiložit přiložené 64bitové knihovny `libcrypto-3-x64.dll`, `libssh2.dll` a `z.dll`.
 
 ### Možnost B: Přes Visual Studio (MSBuild)
 **Požadavky:** Visual Studio 2022 (x64), knihovny `libssh2` a `openssl` přes vcpkg.
