@@ -217,6 +217,7 @@ static void LoadProfileToFields(HWND HWindow, const CSftpSavedProfile& p)
     SetDlgItemText(HWindow, IDC_SFTPSERVER, p.SftpServer);
     CheckDlgButton(HWindow, IDC_SSHCOMPRESS, p.UseCompression ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(HWindow, IDC_SCPFALLBACK, p.ScpFallback ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(HWindow, IDC_EXECONENTER, p.ExecOnEnter ? BST_CHECKED : BST_UNCHECKED);
     SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, p.Protocol == 1 ? 1 : 0, 0);
 }
 
@@ -322,6 +323,7 @@ static int ControlPage(int id)
     case IDC_ST_PAGE4_SFTPSERVER:
     case IDC_SFTPSERVER:
     case IDC_ST_PAGE4_SFTPSERVER_NOTE:
+    case IDC_EXECONENTER:
         return 4; // SFTP (protocol options)
     default:
         return -1; // tree, Advanced options, buttons -> always
@@ -450,6 +452,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         SetDlgItemText(HWindow, IDC_SFTPSERVER, SftpProfile.SftpServer);
         CheckDlgButton(HWindow, IDC_SSHCOMPRESS, SftpProfile.UseCompression ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(HWindow, IDC_SCPFALLBACK, SftpProfile.ScpFallback ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(HWindow, IDC_EXECONENTER, SftpProfile.ExecOnEnter ? BST_CHECKED : BST_UNCHECKED);
         SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, SftpProfile.Protocol == 1 ? 1 : 0, 0);
 
         // if default connection is set, prefill it
@@ -712,6 +715,7 @@ static int g_SelectedProfileIndex = -1;
             GetDlgItemText(HWindow, IDC_SFTPSERVER, p.SftpServer, sizeof(p.SftpServer));
             p.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
             p.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
+            p.ExecOnEnter = IsDlgButtonChecked(HWindow, IDC_EXECONENTER) == BST_CHECKED;
             p.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
             GetSelFolder(HWindow, p.Folder, sizeof(p.Folder)); // save to currently selected folder
             if (p.Host[0] == 0)
@@ -808,6 +812,7 @@ static int g_SelectedProfileIndex = -1;
             GetDlgItemText(HWindow, IDC_SFTPSERVER, SftpProfile.SftpServer, sizeof(SftpProfile.SftpServer));
             SftpProfile.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
             SftpProfile.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
+            SftpProfile.ExecOnEnter = IsDlgButtonChecked(HWindow, IDC_EXECONENTER) == BST_CHECKED;
             SftpProfile.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
             {
                 int e = (int)SendDlgItemMessage(HWindow, IDC_ENCODING, CB_GETCURSEL, 0, 0);
@@ -1132,8 +1137,23 @@ CPluginInterfaceForFS::ExecuteOnFS(int panel, CPluginFSInterfaceAbstract* plugin
             SalamanderGeneral->ChangePanelPathToPluginFS(panel, pluginFSName, newPath);
         }
     }
-    else // file: download to temp and open with associated application
+    else // file: if executable (+x) and ExecOnEnter is enabled, execute on server; otherwise download
     {
+        HWND parent = SalamanderGeneral->GetMsgBoxParent();
+        CFSData* ext = (CFSData*)file.PluginData;
+        bool isExec = (ext != NULL && (ext->Rights[3] == 'x' || ext->Rights[3] == 's' ||
+                                       ext->Rights[6] == 'x' || ext->Rights[6] == 's' ||
+                                       ext->Rights[9] == 'x' || ext->Rights[9] == 't'));
+        if (isExec && SftpProfile.ExecOnEnter)
+        {
+            SalamanderGeneral->SetUserWorkedOnPanelPath(panel);
+            char cmd[MAX_PATH + 16];
+            _snprintf_s(cmd, sizeof(cmd), _TRUNCATE, "./\"%s\"", file.Name);
+            int d1 = 0, d2 = 0;
+            fs->ExecuteCommandLine(parent, cmd, d1, d2);
+            return;
+        }
+
         SalamanderGeneral->SetUserWorkedOnPanelPath(panel);
         char remote[MAX_PATH];
         SftpJoin(fs->Path, file.Name, remote, MAX_PATH);
@@ -1141,7 +1161,6 @@ CPluginInterfaceForFS::ExecuteOnFS(int panel, CPluginFSInterfaceAbstract* plugin
         GetTempPath(MAX_PATH, tmpDir);
         lstrcpyn(tmpFile, tmpDir, MAX_PATH);
         SalamanderGeneral->SalPathAppend(tmpFile, file.Name, MAX_PATH);
-        HWND parent = SalamanderGeneral->GetMsgBoxParent();
         if (SftpEnsureConnected(parent) && SftpConn.Download(remote, tmpFile))
             ShellExecute(SalamanderGeneral->GetMainWindowHWND(), "open", tmpFile, NULL, tmpDir, SW_SHOWNORMAL);
         else

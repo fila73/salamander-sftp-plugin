@@ -47,6 +47,7 @@
 #define IDC_ST_PAGE4_SFTPSERVER         600
 #define IDC_SFTPSERVER                  601
 #define IDC_ST_PAGE4_SFTPSERVER_NOTE    602
+#define IDC_EXECONENTER                 603
 #define IDC_SSHCOMPRESS                 546
 #define IDD_INPUT                       547
 #define IDC_INPUTPROMPT                 548

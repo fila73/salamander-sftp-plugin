@@ -729,13 +729,15 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
                     registry->GetValue(pk, "KeyFile", REG_SZ, p.KeyFile, sizeof(p.KeyFile));
                     registry->GetValue(pk, "Path", REG_SZ, p.Path, sizeof(p.Path));
                     registry->GetValue(pk, "SftpServer", REG_SZ, p.SftpServer, sizeof(p.SftpServer));
-                    DWORD comp = 0, proto = 0, scpfb = 0;
+                    DWORD comp = 0, proto = 0, scpfb = 0, execOnEnter = 1;
                     registry->GetValue(pk, "Compression", REG_DWORD, &comp, sizeof(DWORD));
                     registry->GetValue(pk, "Protocol", REG_DWORD, &proto, sizeof(DWORD));
                     registry->GetValue(pk, "ScpFallback", REG_DWORD, &scpfb, sizeof(DWORD));
+                    registry->GetValue(pk, "ExecOnEnter", REG_DWORD, &execOnEnter, sizeof(DWORD));
                     p.UseCompression = comp != 0;
                     p.Protocol = (int)proto;
                     p.ScpFallback = scpfb != 0;
+                    p.ExecOnEnter = execOnEnter != 0;
                     registry->GetValue(pk, "Folder", REG_SZ, p.Folder, sizeof(p.Folder));
                     registry->CloseKey(pk);
                     SftpProfileCount++;
@@ -814,9 +816,11 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
                 DWORD comp = SftpProfiles[i].UseCompression ? 1 : 0;
                 DWORD proto = (DWORD)SftpProfiles[i].Protocol;
                 DWORD scpfb = SftpProfiles[i].ScpFallback ? 1 : 0;
+                DWORD execOnEnter = SftpProfiles[i].ExecOnEnter ? 1 : 0;
                 registry->SetValue(pk, "Compression", REG_DWORD, &comp, sizeof(DWORD));
                 registry->SetValue(pk, "Protocol", REG_DWORD, &proto, sizeof(DWORD));
                 registry->SetValue(pk, "ScpFallback", REG_DWORD, &scpfb, sizeof(DWORD));
+                registry->SetValue(pk, "ExecOnEnter", REG_DWORD, &execOnEnter, sizeof(DWORD));
                 registry->SetValue(pk, "Folder", REG_SZ, SftpProfiles[i].Folder, -1);
                 registry->CloseKey(pk);
             }

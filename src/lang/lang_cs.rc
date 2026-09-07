@@ -93,10 +93,11 @@ BEGIN
     LTEXT           "Kódování &názvů souborů:",IDC_ST_PAGE3_ENCODING,133,32,110,8
     COMBOBOX        IDC_ENCODING,133,42,110,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Šifry, výměna klíčů i typy klíčů se vyjednávají se serverem automaticky (včetně moderních: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3_CIPHERS,133,62,200,44
-    GROUPBOX        "Možnosti SFTP protokolu",IDC_ST_PAGE4_SFTP,126,3,214,108
+    GROUPBOX        "Možnosti SFTP protokolu",IDC_ST_PAGE4_SFTP,126,3,214,144
     LTEXT           "SFTP &server:",IDC_ST_PAGE4_SFTPSERVER,133,16,200,8
     EDITTEXT        IDC_SFTPSERVER,133,28,200,12,ES_AUTOHSCROLL
-    LTEXT           "Vlastní příkaz nebo cesta pro spuštění SFTP serveru na vzdáleném hostiteli (např.: sudo su -c /usr/lib/openssh/sftp-server).\r\n\r\nPonechte prázdné pro použití výchozího SFTP server subsystému.",IDC_ST_PAGE4_SFTPSERVER_NOTE,133,46,200,48
+    LTEXT           "Vlastní příkaz nebo cesta pro spuštění SFTP serveru na vzdáleném hostiteli (např.: sudo su -c /usr/lib/openssh/sftp-server).\r\n\r\nPonechte prázdné pro použití výchozího SFTP server subsystému.",IDC_ST_PAGE4_SFTPSERVER_NOTE,133,44,200,44
+    CONTROL         "Spouštět soubory s právem (+&x) na serveru při stisku Enter",IDC_EXECONENTER,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,133,92,200,18
     LISTBOX         IDC_SESSIONS,126,3,148,170,LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
     PUSHBUTTON      "&Nové",IDC_SESS_NEW,280,3,60,14,NOT WS_VISIBLE
     PUSHBUTTON      "&Upravit",IDC_SESS_EDIT,280,21,60,14,NOT WS_VISIBLE

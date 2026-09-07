@@ -139,10 +139,11 @@ BEGIN
     LTEXT           "File name &encoding:",IDC_ST_PAGE3_ENCODING,133,32,110,8
     COMBOBOX        IDC_ENCODING,133,42,110,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Ciphers, key exchange, and key types are negotiated automatically with the server (including modern ones: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3_CIPHERS,133,62,200,44
-    GROUPBOX        "SFTP protocol options",IDC_ST_PAGE4_SFTP,126,3,214,108
+    GROUPBOX        "SFTP protocol options",IDC_ST_PAGE4_SFTP,126,3,214,144
     LTEXT           "SFTP &server:",IDC_ST_PAGE4_SFTPSERVER,133,16,200,8
     EDITTEXT        IDC_SFTPSERVER,133,28,200,12,ES_AUTOHSCROLL
-    LTEXT           "Custom command or path to start the SFTP server on the remote host (for example: sudo su -c /usr/lib/openssh/sftp-server).\r\n\r\nLeave blank to use the default SFTP server subsystem.",IDC_ST_PAGE4_SFTPSERVER_NOTE,133,46,200,48
+    LTEXT           "Custom command or path to start the SFTP server on the remote host (for example: sudo su -c /usr/lib/openssh/sftp-server).\r\n\r\nLeave blank to use the default SFTP server subsystem.",IDC_ST_PAGE4_SFTPSERVER_NOTE,133,44,200,44
+    CONTROL         "Execute files with (+&x) permission on server on Enter",IDC_EXECONENTER,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,133,92,200,18
     LISTBOX         IDC_SESSIONS,126,3,148,170,LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
     PUSHBUTTON      "&New",IDC_SESS_NEW,280,3,60,14,NOT WS_VISIBLE
     PUSHBUTTON      "&Edit",IDC_SESS_EDIT,280,21,60,14,NOT WS_VISIBLE

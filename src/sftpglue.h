@@ -19,6 +19,7 @@ struct CSftpProfile
     bool UseCompression; // zlib compression
     int Protocol;        // 0 = SFTP, 1 = SCP
     bool ScpFallback;    // fallback to SCP on SFTP failure
+    bool ExecOnEnter;    // execute (+x) files on server on Enter
     bool Valid;
 };
 extern CSftpProfile SftpProfile;
@@ -38,6 +39,7 @@ struct CSftpSavedProfile
     bool UseCompression; // zlib compression
     int Protocol;        // 0 = SFTP, 1 = SCP
     bool ScpFallback;    // emergency SCP
+    bool ExecOnEnter;    // execute (+x) files on server on Enter
     char Folder[128];    // folder (group) for connections, "" = root
 };
 extern CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];

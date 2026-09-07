@@ -4,7 +4,7 @@
 #include <string.h>
 
 CSftpConnection SftpConn;
-CSftpProfile SftpProfile = {"", 22, "", "", "", "", "", false, 0, false, false};
+CSftpProfile SftpProfile = {"", 22, "", "", "", "", "", false, 0, false, true, false};
 CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 int SftpProfileCount = 0;
 char SftpDefaultSession[128] = "";
