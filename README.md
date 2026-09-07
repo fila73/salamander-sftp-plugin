@@ -17,6 +17,7 @@ This fork introduces significant stability fixes, architecture improvements, enh
 | Feature / Area | Original Upstream ([Dupl3xx](https://github.com/Dupl3xx/salamander-sftp-plugin)) | This Enhanced Fork ([fila73](https://github.com/fila73/salamander-sftp-plugin)) |
 |---|---|---|
 | **Build & Dependencies** | Required external `libssh2.dll` and dynamic MinGW runtime DLLs (`libwinpthread-1.dll`, etc.) | **Standalone zero-dependency build**: `libssh2` is statically embedded; C/C++ runtime & pthreads linked statically (`-static`). Only `libcrypto-3-x64.dll` is required. |
+| **Custom SFTP Server & Elevation** | Only default SSHD SFTP subsystem | **Custom `sftp-server` command support**: Execute SFTP under `sudo` / `su -c` or specific user (e.g. `www-data`), custom binary paths on NAS/BSD, and automatic prefix propagation to command-line bar executions. |
 | **Command Execution** | Basic execution | **Asynchronous non-blocking background execution** with dedicated SSH connection; resizable streaming console dialog (Consolas font, text wrap, Cancel button). |
 | **Connection Keepalive** | Basic TCP / idle handling | **Active periodic FS timer keepalive** (8s interval) preventing disconnects on TrueNAS / OpenSSH (`ClientAliveInterval`) and stateful firewalls; non-blocking socket health check & auto-reconnect. |
 | **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, **Spacebar on folder** calculation with auto-advance, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
@@ -30,6 +31,25 @@ This fork introduces significant stability fixes, architecture improvements, enh
 - **SFTP** (SSH File Transfer Protocol) – default, high-performance v3 protocol
 - **SCP** – directory listing via shell (`ls`/`stat`), file transfer via `libssh2_scp_*`, operations (`mkdir`/`rm`/`mv`/`chmod`) via shell
 - **Fallback SCP** – automatic transparent fallback to SCP when the remote server does not support the SFTP subsystem
+
+### Custom SFTP Server Command (Privilege Escalation & User Switching)
+In the connection dialog, you can configure the **SFTP Server** field for any profile:
+1. **Manage files as `root` via `sudo`**:
+   - `sudo /usr/lib/openssh/sftp-server`
+   - `sudo su -c /usr/lib/openssh/sftp-server`
+   - Ideal for servers where direct SSH root login is disabled (`PermitRootLogin no`). Authenticate as a normal user with SSH keys, while the SFTP session operates with full root privileges.
+2. **Switch to service / application user**:
+   - `sudo -u www-data /usr/lib/openssh/sftp-server`
+   - Manage web directories directly under the webserver identity (new files automatically receive `www-data:www-data` ownership).
+3. **Non-standard binary paths on NAS & BSD systems**:
+   - Synology NAS: `/usr/syno/sbin/sftp-server`
+   - QNAP / macOS / BSD: `/usr/libexec/sftp-server`
+   - OpenWrt / BusyBox: `/usr/lib/ssh/sftp-server`
+4. **Custom server flags & options**:
+   - `/usr/lib/openssh/sftp-server -u 0022` (set default umask for created files)
+   - `/usr/lib/openssh/sftp-server -l DEBUG3` (verbose server-side logging)
+5. **Automatic prefix propagation to command line**:
+   - Commands executed from Open Salamander's bottom command line bar automatically inherit the `sudo` / `su` prefix (e.g. `sudo su -c '<command>'`), executing in the same target user context.
 
 ### Cryptography (via OpenSSL Backend)
 Negotiated automatically based on server capabilities:
@@ -56,7 +76,7 @@ Negotiated automatically based on server capabilities:
 - **Edit file on server** (`F4` – downloads to temp, opens configured editor, automatically re-uploads on save)
 - **Calculate directory size** (`Ctrl+Shift+F10` / Spacebar on folder, fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
 - **Remote Command Execution**:
-  - Direct execution via Open Salamander command line bar below panels
+  - Direct execution via Open Salamander command line bar below panels (with automatic `sudo`/`su` prefix wrapping)
   - Context menu item **`Execute`** (located right after `Open`)
   - Real-time command output console dialog with clean monospace font (Consolas) and cancel/interrupt support
 
@@ -74,15 +94,15 @@ Negotiated automatically based on server capabilities:
 ### Plugin Core
 | File | Purpose |
 |------|---------|
-| **`sftpconn.h/.cpp`** | **Connection layer over libssh2.** Connect (handshake, host key verification, authentication), ListDir, Download/Upload (with resume + progress), SCP operations, chmod/stat, known_hosts verification, PuTTY `.ppk` parser, streaming command exec, active keepalive, fast directory size. |
-| **`sftpglue.h/.cpp`** | **Glue** between Open Salamander FS and `CSftpConnection`. POSIX path helpers, `SftpEnsureConnected`, KBI dialog callbacks, connection profiles and saved sessions. |
+| **`sftpconn.h/.cpp`** | **Connection layer over libssh2.** Connect (handshake, host key verification, authentication), ListDir, Download/Upload (with resume + progress), SCP operations, chmod/stat, known_hosts verification, PuTTY `.ppk` parser, streaming command exec, active keepalive, fast directory size, custom `sftp-server` execution. |
+| **`sftpglue.h/.cpp`** | **Glue** between Open Salamander FS and `CSftpConnection`. POSIX path helpers, `SftpEnsureConnected`, `WrapCommandWithSftpServerPrefix`, KBI dialog callbacks, connection profiles and saved sessions. |
 | **`dialogs.h/.cpp`** | Real-time command execution console dialog (`ShowCommandExecDialog`), worker streaming thread, custom monospace font, and dark mode handling. |
 
 ### Salamander Integration
 | File | Purpose |
 |------|---------|
 | `sftp.cpp` | Plugin entry point, registration (FS name `dfs`), menu command routing, window message hook for Spacebar calculation, registry configuration loading/saving. |
-| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, connection profiles, saved sessions management, active FS tracking, directory navigation focus preservation. |
+| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, connection profiles, custom SFTP server field, saved sessions management, active FS tracking, directory navigation focus preservation. |
 | `fs2.cpp` | **FS interface implementation** – ChangePath, ListCurrentPath, copy/download/upload (with resume/overwrite dialogs), Delete, CreateDir, QuickRename, ChangeAttributes (chmod), ShowProperties, SftpOnSpacePressedOnFolder, context menu. |
 | `menu.cpp` | Menu command handlers (Edit file, Calculate size, Disconnect, Execute). |
 | `sftp.h` | Shared declarations, `CFSData` (column attributes), command constants. |
