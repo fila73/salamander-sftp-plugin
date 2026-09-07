@@ -21,9 +21,6 @@ Tento fork přináší řadu oprav stability, architektonických vylepšení, zv
 | **Udržování spojení (Keepalive)** | Základní TCP / idle obsluha | **Aktivní periodický FS timer keepalive** (interval 8 s) zabraňující odpojení na serverech TrueNAS / OpenSSH (`ClientAliveInterval`) a stavových firewallech; neblokující detekce zdraví socketu a transparentní auto-reconnect. |
 | **Výpočet velikosti složek** | Standardní procházení | **Bleskový server-side výpočet** (`FastDirSize` přes SSH `du -sb`), nezamrzající přerušitelný dialog průběhu, ochrana proti symlinkovým cyklům, **stisk mezerníku na složce** s výpočtem a posunem kurzoru a integrace klávesové zkratky **`Ctrl+Shift+F10`** i kontextového menu. |
 | **Navigace v adresářích** | Reset fokusu při přechodu nahoru | **Zachování fokusu kurzoru** na opuštěné složce při přechodu do nadřazeného adresáře (`..`). |
-| **Stabilita čtení složek** | Možné zacyklení u velkých/specifických složek | **Oprava zacyklení a stránkování** v SFTP listingu; podpora vlastního příkazu `sftp-server` a správná expanze domovské složky (`~`). |
-| **Uživatelské rozhraní** | Standardní dialogy, možné zadrhávání oken | **Tlačítko pro zobrazení hesla** (ikona oka), okamžité ukládání profilů, oprava plynulosti pohybu oken, High-DPI podpora a sjednocený tmavý režim (Dark Mode). |
-| **Lokalizace** | Čeština a angličtina | **Všech 11 jazyků Salamandera** kompletně synchronizováno (`.slg` / `.slt` pro CZ, EN, DE, FR, ES, RU, SK, HU, RO, NL, ZH). |
 
 ---
 

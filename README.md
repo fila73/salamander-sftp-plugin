@@ -21,9 +21,6 @@ This fork introduces significant stability fixes, architecture improvements, enh
 | **Connection Keepalive** | Basic TCP / idle handling | **Active periodic FS timer keepalive** (8s interval) preventing disconnects on TrueNAS / OpenSSH (`ClientAliveInterval`) and stateful firewalls; non-blocking socket health check & auto-reconnect. |
 | **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, **Spacebar on folder** calculation with auto-advance, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
 | **Directory Navigation** | Reset focus on parent entry | **Preserves cursor focus** on the exited folder when navigating up (`..`). |
-| **Directory Listing Stability** | Potential loops on large/complex directories | **Loop detection & paging fixes** in SFTP listing; custom `sftp-server` command support and home directory (`~`) resolution. |
-| **UI & Usability** | Standard dialogs, potential window lag | **Password visibility toggle** (eye icon), immediate profile saving, smooth window dragging fix, High-DPI awareness, and dark mode theme alignment. |
-| **Localization** | Czech & English | **All 11 Salamander languages** supported and synced (`.slg` / `.slt` for CS, EN, DE, FR, ES, RU, SK, HU, RO, NL, ZH). |
 
 ---
 
