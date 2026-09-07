@@ -1,18 +1,38 @@
 # SFTP/SCP Plugin for Open Salamander (x64)
 
-A full-featured **SFTP and SCP** client as a file-system plugin for [Open Salamander 5.0](https://github.com/OpenSalamander/salamander) (x64). Built on top of **libssh2 + OpenSSL**, providing modern cryptography and high performance.
+A full-featured **SFTP and SCP** client as a file-system plugin for [Open Salamander 5.0](https://github.com/OpenSalamander/salamander) (x64) and Altap Salamander 4.x. Built on top of **libssh2 + OpenSSL**, providing modern cryptography, high transfer speed, and maximum stability.
 
-> Copyright © 2026 Dupl3xx  
-> Based on the SDK template of Open Salamander (SPDX headers retained in SDK files). The core implementation (`sftpconn.*`, `sftpglue.*`, `dialogs.*`) is original work.
+> [!NOTE]
+> **Fork Notice & Attribution**:  
+> This project is an enhanced and maintained fork of [Dupl3xx/salamander-sftp-plugin](https://github.com/Dupl3xx/salamander-sftp-plugin).  
+> All credit for the original plugin architecture, SDK integration, and base implementation goes to **Dupl3xx**.  
+> Core custom components Copyright © 2026 Dupl3xx & contributors.
+
+---
+
+## 🚀 Key Differences & Enhancements (vs. Upstream)
+
+This fork introduces significant stability fixes, architecture improvements, enhanced performance, and new features:
+
+| Feature / Area | Original Upstream ([Dupl3xx](https://github.com/Dupl3xx/salamander-sftp-plugin)) | This Enhanced Fork ([fila73](https://github.com/fila73/salamander-sftp-plugin)) |
+|---|---|---|
+| **Build & Dependencies** | Required external `libssh2.dll` and dynamic MinGW runtime DLLs (`libwinpthread-1.dll`, etc.) | **Standalone zero-dependency build**: `libssh2` is statically embedded; C/C++ runtime & pthreads linked statically (`-static`). Only `libcrypto-3-x64.dll` is required. |
+| **Command Execution** | Basic execution | **Asynchronous non-blocking background execution** with dedicated SSH connection; resizable streaming console dialog (Consolas font, text wrap, Cancel button). |
+| **Connection Keepalive** | Basic TCP / idle handling | **Active periodic FS timer keepalive** (8s interval) preventing disconnects on TrueNAS / OpenSSH (`ClientAliveInterval`) and stateful firewalls; non-blocking socket health check & auto-reconnect. |
+| **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
+| **Directory Navigation** | Reset focus on parent entry | **Preserves cursor focus** on the exited folder when navigating up (`..`). |
+| **Directory Listing Stability** | Potential loops on large/complex directories | **Loop detection & paging fixes** in SFTP listing; custom `sftp-server` command support and home directory (`~`) resolution. |
+| **UI & Usability** | Standard dialogs, potential window lag | **Password visibility toggle** (eye icon), immediate profile saving, smooth window dragging fix, High-DPI awareness, and dark mode theme alignment. |
+| **Localization** | Czech & English | **All 11 Salamander languages** supported and synced (`.slg` / `.slt` for CS, EN, DE, FR, ES, RU, SK, HU, RO, NL, ZH). |
 
 ---
 
 ## Features
 
 ### Protocols
-- **SFTP** (SSH File Transfer Protocol) – default
+- **SFTP** (SSH File Transfer Protocol) – default, high-performance v3 protocol
 - **SCP** – directory listing via shell (`ls`/`stat`), file transfer via `libssh2_scp_*`, operations (`mkdir`/`rm`/`mv`/`chmod`) via shell
-- **Fallback SCP** – automatic fallback to SCP when the server does not support the SFTP subsystem
+- **Fallback SCP** – automatic transparent fallback to SCP when the remote server does not support the SFTP subsystem
 
 ### Cryptography (via OpenSSL Backend)
 Negotiated automatically based on server capabilities:
@@ -24,7 +44,7 @@ Negotiated automatically based on server capabilities:
 ### Authentication
 - **Password**
 - **Private Key** – OpenSSH/PEM and **PuTTY `.ppk`** (RSA + ed25519, v2/v3, including encrypted keys – v2 SHA1/AES, v3 Argon2id via OpenSSL)
-- **Keyboard-Interactive** – including 2FA / MFA (first prompt auto-filled with password, subsequent prompts handled via dialog)
+- **Keyboard-Interactive** – including 2FA / MFA (first prompt auto-filled with password, subsequent prompts handled interactively via dialog)
 
 ### Security
 - **Host Key Verification** against `known_hosts` (`%APPDATA%\OpenSalamander-SFTP\known_hosts`)
@@ -33,10 +53,10 @@ Negotiated automatically based on server capabilities:
 
 ### File Operations & Features
 - Remote file browsing (permissions, owner, group columns), downloading, uploading
-- **Progress with transfer speed**, overwrite confirmations
+- **Transfer progress with live speed gauge**, overwrite confirmations
 - **Resume interrupted transfers** – byte-exact resume from last position (SFTP)
 - Delete, create directory, rename, **change permissions (`chmod`)**, properties
-- **Edit file on server** (F4 – downloads to temp, opens default editor, automatically re-uploads on save)
+- **Edit file on server** (`F4` – downloads to temp, opens configured editor, automatically re-uploads on save)
 - **Calculate directory size** (`Ctrl+Shift+F10`, fast server-side `du` with recursive fallback, non-blocking progress dialog with Cancel button, symlink cycle protection, and panel size updates)
 - **Remote Command Execution**:
   - Direct execution via Open Salamander command line bar below panels
@@ -57,15 +77,15 @@ Negotiated automatically based on server capabilities:
 ### Plugin Core
 | File | Purpose |
 |------|---------|
-| **`sftpconn.h/.cpp`** | **Connection layer over libssh2.** Connect (handshake, host key verification, authentication), ListDir, Download/Upload (with resume + progress), SCP operations, chmod/stat, known_hosts verification, PuTTY `.ppk` parser, streaming command exec. |
+| **`sftpconn.h/.cpp`** | **Connection layer over libssh2.** Connect (handshake, host key verification, authentication), ListDir, Download/Upload (with resume + progress), SCP operations, chmod/stat, known_hosts verification, PuTTY `.ppk` parser, streaming command exec, active keepalive, fast directory size. |
 | **`sftpglue.h/.cpp`** | **Glue** between Open Salamander FS and `CSftpConnection`. POSIX path helpers, `SftpEnsureConnected`, KBI dialog callbacks, connection profiles and saved sessions. |
-| **`dialogs.h/.cpp`** | Real-time command execution console dialog (`ShowCommandExecDialog`), worker streaming thread, custom font, and dark mode handling. |
+| **`dialogs.h/.cpp`** | Real-time command execution console dialog (`ShowCommandExecDialog`), worker streaming thread, custom monospace font, and dark mode handling. |
 
 ### Salamander Integration
 | File | Purpose |
 |------|---------|
 | `sftp.cpp` | Plugin entry point, registration (FS name `dfs`), menu command routing, registry configuration loading/saving. |
-| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, connection profiles, saved sessions management. |
+| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, connection profiles, saved sessions management, directory navigation focus preservation. |
 | `fs2.cpp` | **FS interface implementation** – ChangePath, ListCurrentPath, copy/download/upload (with resume/overwrite dialogs), Delete, CreateDir, QuickRename, ChangeAttributes (chmod), ShowProperties, ExecuteCommandLine, context menu. |
 | `menu.cpp` | Menu command handlers (Edit file, Calculate size, Disconnect, Execute). |
 | `sftp.h` | Shared declarations, `CFSData` (column attributes), command constants. |
@@ -76,19 +96,18 @@ Negotiated automatically based on server capabilities:
 | `lang/lang.rc`, `lang.rc2`, `lang.rh` | Dialog templates, string tables, Czech/English translations compiled into `.slg`. |
 | `res/fs.ico`, `dir.ico`, `file.ico` | Icons for filesystem and dialogs. |
 | `versinfo.rh2` | Version, copyright, and description resource header. |
-| `Makefile.mingw` | GNU Make / GCC build script for MinGW-w64 (WSL/MSYS2 cross-compilation). |
+| `Makefile.mingw` | GNU Make / GCC build script for MinGW-w64 (standalone build, static runtime). |
 | `vcxproj/sftp.vcxproj` | Visual Studio MSBuild project file. |
 
 ---
 
 ## Building
 
-### Option A: Using MinGW-w64 (via WSL or MSYS2)
+### Option A: Using MinGW-w64 (via MSYS2, WSL or Native GCC)
 The plugin can be built cleanly using the included `Makefile.mingw`:
 
-```bash
-cd src/plugins/sftp
-make -f Makefile.mingw
+```powershell
+mingw32-make -f Makefile.mingw CROSS_COMPILE=
 ```
 
 This compiles `sftp.spl`, `english.slg`, and `czech.slg` with statically linked `libssh2` and C/C++ runtimes (no MinGW DLL dependencies). For deployment on other PCs, only the standard 64-bit `libcrypto-3-x64.dll` needs to be placed alongside `sftp.spl`.
@@ -102,5 +121,8 @@ MSBuild src\vcxproj\sftp.vcxproj /p:Configuration=Release /p:Platform=x64
 
 ---
 
-## License
-Based on Open Salamander SDK (SPDX / GPL-2.0-or-later). Core custom components Copyright © 2026 Dupl3xx.
+## License & Credits
+- **Upstream Repository**: [https://github.com/Dupl3xx/salamander-sftp-plugin](https://github.com/Dupl3xx/salamander-sftp-plugin)
+- Based on Open Salamander SDK (SPDX / GPL-2.0-or-later).
+- Original core implementation Copyright © 2026 Dupl3xx.
+- Enhancements and maintenance Copyright © 2026 fila73 & contributors.
