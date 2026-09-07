@@ -98,12 +98,12 @@ Při výpočtu velikosti složek (`Calculate Size (server)`):
 Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
 - **Statické runtimes**: `Makefile.mingw` používá `-static -static-libgcc -static-libstdc++`, což eliminuje závislosti na `libwinpthread-1.dll`, `libgcc_s_seh-1.dll` i `libstdc++-6.dll`.
 - **Statický libssh2**: Slinkován ze statického archivu `libssh2_static.a`.
-- **OpenSSL (`libcrypto-3-x64.dll`)**: Z důvodu dynamického načítání a aktualizací kryptografických modulů se `libcrypto-3-x64.dll` distribuuje jako samostatná 64bitová DLL přímo ve složce pluginu (`plugins\sftp\`), odkud ji `sftp.cpp` při startu přednostně načítá (`LOAD_WITH_ALTERED_SEARCH_PATH`).
+- **Knihovny (`libcrypto-3-x64.dll`, `libssh2.dll`)**: Distribuují se jako samostatné 64bitové DLL přímo ve složce pluginu (`plugins\sftp\`), odkud je `sftp.cpp` / `sftpconn.cpp` při startu přednostně načítá (`LOAD_WITH_ALTERED_SEARCH_PATH` / `LoadBundledLibssh2`).
 - **Ověření závislostí**:
   ```powershell
   objdump -p sftp.spl | Select-String "DLL Name"
   ```
-  Výstup smí obsahovat pouze standardní Windows systémové knihovny a `libcrypto-3-x64.dll`.
+  Výstup smí obsahovat pouze standardní Windows systémové knihovny a `libcrypto-3-x64.dll` / `libssh2.dll`.
 - **Statická analýza**:
   ```powershell
   cppcheck --enable=warning,performance,portability,style src/
