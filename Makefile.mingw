@@ -82,7 +82,7 @@ ALL_OBJS = $(CPP_OBJS) src/sftp.res
 all: libcrypto-3-x64.a libssh2_static.a sftp.spl english.slg czech.slg
 
 libcrypto-3-x64.a: libcrypto-3-x64.def
-	TMPDIR=$$(mktemp -d /tmp/dlltool.XXXXXX 2>/dev/null || mktemp -d) && $(DLLTOOL) -m i386:x86-64 -d $< -l "$$TMPDIR/$@" -D libcrypto-3-x64.dll && cp "$$TMPDIR/$@" $@ && rm -rf "$$TMPDIR"
+	$(DLLTOOL) -m i386:x86-64 -d $< -l $@ -D libcrypto-3-x64.dll
 
 src/libssh2/%.o: src/libssh2/%.c
 	$(CC) $(LIBSSH2_CFLAGS) -c $< -o $@
