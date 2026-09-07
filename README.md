@@ -21,6 +21,7 @@ This fork introduces significant stability fixes, architecture improvements, enh
 | **Command Execution** | Basic execution | **Asynchronous non-blocking background execution** with dedicated SSH connection; resizable streaming console dialog (Consolas font, text wrap, Cancel button). |
 | **Connection Keepalive** | Basic TCP / idle handling | **Active periodic FS timer keepalive** (8s interval) preventing disconnects on TrueNAS / OpenSSH (`ClientAliveInterval`) and stateful firewalls; non-blocking socket health check & auto-reconnect. |
 | **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, **Spacebar on folder** calculation with auto-advance, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
+| **Server File Execution (Enter)** | All files downloaded to Windows | **Direct server execution for `+x` files upon Enter**: If a file has executable permissions (scripts, binaries), pressing Enter runs `./file` directly on the server in the streaming console (with `sudo` support). Non-executable files continue opening locally in Windows. Fully configurable per profile. |
 | **Directory Navigation** | Reset focus on parent entry | **Preserves cursor focus** on the exited folder when navigating up (`..`). |
 
 ---

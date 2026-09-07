@@ -21,6 +21,7 @@ Tento fork přináší řadu oprav stability, architektonických vylepšení, zv
 | **Spouštění příkazů na serveru** | Základní provádění | **Asynchronní neblokující spouštění na pozadí** přes dedikované SSH spojení; nastavitelné okno konzole (Consolas font, zalamování textu, tlačítko Storno/Cancel). |
 | **Udržování spojení (Keepalive)** | Základní TCP / idle obsluha | **Aktivní periodický FS timer keepalive** (interval 8 s) zabraňující odpojení na serverech TrueNAS / OpenSSH (`ClientAliveInterval`) a stavových firewallech; neblokující detekce zdraví socketu a transparentní auto-reconnect. |
 | **Výpočet velikosti složek** | Standardní procházení | **Bleskový server-side výpočet** (`FastDirSize` přes SSH `du -sb`), nezamrzající přerušitelný dialog průběhu, ochrana proti symlinkovým cyklům, **stisk mezerníku na složce** s výpočtem a posunem kurzoru a integrace klávesové zkratky **`Ctrl+Shift+F10`** i kontextového menu. |
+| **Spouštění souborů na serveru (Enter)** | Všechny soubory se stahují do Windows | **Spouštění souborů s `+x` na serveru při stisku Enter**: Pokud má soubor právo ke spuštění (skripty, binárky), stisk Enter na něm otevře konzoli a spustí `./soubor` na serveru (s podporou `sudo`). Běžné soubory se nadále otevírají lokálně ve Windows. Volitelné v profilu relace. |
 | **Navigace v adresářích** | Reset fokusu při přechodu nahoru | **Zachování fokusu kurzoru** na opuštěné složce při přechodu do nadřazeného adresáře (`..`). |
 
 ---
