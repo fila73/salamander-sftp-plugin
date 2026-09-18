@@ -109,3 +109,22 @@ Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
   cppcheck --enable=warning,performance,portability,style src/
   ```
 
+---
+
+## 7. Titulky tabů (Tabs), adresní řádek a mezipaměť prohlížeče (Cache Invalidation)
+
+### Titulky tabů a adresní řádek:
+1. **`GetPathForMainWindowTitle`**:
+   - `mode == 1` (**Directory Name Only**): Salamander volá pro titulky záložek (tabů). Plugin vrací název aktuální podsložky (např. `Season 29` nebo `/` pro root).
+   - `mode == 2` (**Shortened Path**): Salamander volá pro záhlaví okna. Plugin vrací zkrácenou cestu `sftp://user@host[:port]/.../podsložka`.
+2. **`GetNextDirectoryLineHotPath`**:
+   - Musí správně přeskočit prefix `sftp://user@host[:port]/` jako jeden celek (kořen) a následně rozdělovat cestu podle lomítek `/` i `\\`. Nesmí přeskakovat fixní počet znaků, aby nedošlo k poškození uživatelského jména (např. oříznutí `root` na `oot`).
+
+### Zneplatnění diskové mezipaměti prohlížeče (F3 View):
+- `uniqueFileName` předávaný do `AllocFileNameInCache` **musí** obsahovat kompletní identifikaci serveru (`user@host:port`), vzdálenou cestu a zároveň velikost a čas modifikace souboru:
+  ```cpp
+  _snprintf_s(uniqueFileName + len, sizeof(uniqueFileName) - len, _TRUNCATE,
+              ":%I64u:%08lx%08lx", file.Size.Value,
+              file.LastWrite.dwHighDateTime, file.LastWrite.dwLowDateTime);
+  ```
+- Tím se garantuje okamžité stažení nové verze při změně souboru na serveru i při přepnutí mezi různými servery se stejnou strukturou cest.

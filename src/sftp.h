@@ -623,7 +623,7 @@ public:
     virtual void WINAPI GetFSFreeSpace(CQuadWord* retValue);
     virtual BOOL WINAPI GetNextDirectoryLineHotPath(const char* text, int pathLen, int& offset);
     virtual void WINAPI CompleteDirectoryLineHotPath(char* path, int pathBufSize) {}
-    virtual BOOL WINAPI GetPathForMainWindowTitle(const char* fsName, int mode, char* buf, int bufSize) { return FALSE; }
+    virtual BOOL WINAPI GetPathForMainWindowTitle(const char* fsName, int mode, char* buf, int bufSize);
     virtual void WINAPI ShowInfoDialog(const char* fsName, HWND parent);
     virtual BOOL WINAPI ExecuteCommandLine(HWND parent, char* command, int& selFrom, int& selTo);
     virtual BOOL WINAPI QuickRename(const char* fsName, int mode, HWND parent, CFileData& file, BOOL isDir,

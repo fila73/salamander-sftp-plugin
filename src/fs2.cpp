@@ -1100,45 +1100,96 @@ CPluginFSInterface::GetFSFreeSpace(CQuadWord* retValue)
 BOOL WINAPI
 CPluginFSInterface::GetNextDirectoryLineHotPath(const char* text, int pathLen, int& offset)
 {
+    const char* end = text + pathLen;
     const char* root = text; // pointer past the root portion of the path
     while (*root != 0 && *root != ':')
         root++;
     if (*root == ':')
     {
         root++;
-        if (*root == '\\') // UNC path
-        {
-            root++;
-            int c = 3;
-            while (*root != 0)
-            {
-                if (*root == '\\' && --c == 0)
-                    break;
-                root++;
-            }
-        }
-        else // standard path
-        {
-            int c = 3;
-            while (*++root != 0 && --c)
-                ;
-        }
+        if ((root[0] == '/' || root[0] == '\\') && (root[1] == '/' || root[1] == '\\'))
+            root += 2; // skip "//"
+        while (root < end && *root != '/' && *root != '\\')
+            root++; // skip "user@host[:port]"
+        if (root < end && (*root == '/' || *root == '\\'))
+            root++; // skip the leading slash of the remote path
     }
+
     const char* s = text + offset;
-    const char* end = text + pathLen;
     if (s >= end)
         return FALSE;
     if (s < root)
         offset = (int)(root - text);
     else
     {
-        if (*s == '\\')
+        if (*s == '/' || *s == '\\')
             s++;
-        while (s < end && *s != '\\')
+        while (s < end && *s != '/' && *s != '\\')
             s++;
         offset = (int)(s - text);
     }
     return s < end;
+}
+
+BOOL WINAPI
+CPluginFSInterface::GetPathForMainWindowTitle(const char* fsName, int mode, char* buf, int bufSize)
+{
+    if (buf == NULL || bufSize <= 0)
+        return FALSE;
+
+    if (mode == 1) // "Directory Name Only"
+    {
+        // Path is e.g. "/mnt/Enko/nas/Serialy/South Park/Season 29" or "/"
+        if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
+        {
+            lstrcpyn(buf, "/", bufSize);
+            return TRUE;
+        }
+        const char* p = Path + strlen(Path);
+        while (p > Path && (*(p - 1) == '/' || *(p - 1) == '\\'))
+            p--;
+        const char* end = p;
+        while (p > Path && *(p - 1) != '/' && *(p - 1) != '\\')
+            p--;
+        int len = (int)(end - p);
+        if (len <= 0)
+        {
+            lstrcpyn(buf, "/", bufSize);
+            return TRUE;
+        }
+        if (len >= bufSize)
+            len = bufSize - 1;
+        memcpy(buf, p, len);
+        buf[len] = 0;
+        return TRUE;
+    }
+    else if (mode == 2) // "Shortened Path"
+    {
+        char prefix[320];
+        SftpHostPrefix(prefix, sizeof(prefix));
+        if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
+        {
+            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/", fsName, prefix);
+            return TRUE;
+        }
+        const char* p = Path + strlen(Path);
+        while (p > Path && (*(p - 1) == '/' || *(p - 1) == '\\'))
+            p--;
+        const char* end = p;
+        while (p > Path && *(p - 1) != '/' && *(p - 1) != '\\')
+            p--;
+        // if root or only one level deep, return full path
+        if (p <= Path + 1)
+        {
+            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s%s", fsName, prefix, Path);
+            return TRUE;
+        }
+        int len = (int)(end - p);
+        _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/.../%.*s", fsName, prefix, len, p);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 void WINAPI
@@ -1275,15 +1326,20 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
                              CSalamanderForViewFileOnFSAbstract* salamander,
                              CFileData& file)
 {
-    // build a unique file name for the disk cache (standard Salamander path format)
-    char uniqueFileName[2 * MAX_PATH];
+    // build a unique file name for the disk cache (standard Salamander path format: fsName://user@host:port/path/file:size:timestamp)
+    char uniqueFileName[3 * MAX_PATH + 64];
     strcpy(uniqueFileName, fsName);
     strcat(uniqueFileName, ":");
-    strcat(uniqueFileName, Path);
-    SalamanderGeneral->SalPathAppend(uniqueFileName + strlen(fsName) + 1, file.Name, MAX_PATH);
+    int len = (int)strlen(uniqueFileName);
+    GetFullName(file, 0 /* isDir = 0 */, uniqueFileName + len, 2 * MAX_PATH);
     // filenames on disk are case-insensitive, the disk cache is case-sensitive, converting
     // to lowercase makes the disk cache behave case-insensitively as well
     SalamanderGeneral->ToLowerCase(uniqueFileName);
+    // append size and modification time so changing file on server or switching servers invalidates cache
+    len = (int)strlen(uniqueFileName);
+    _snprintf_s(uniqueFileName + len, sizeof(uniqueFileName) - len, _TRUNCATE,
+                ":%I64u:%08lx%08lx", file.Size.Value,
+                file.LastWrite.dwHighDateTime, file.LastWrite.dwLowDateTime);
 
     // obtain the cache copy name
     BOOL fileExists;

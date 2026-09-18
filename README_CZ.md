@@ -23,6 +23,7 @@ Tento fork přináší řadu oprav stability, architektonických vylepšení, zv
 | **Výpočet velikosti složek** | Standardní procházení | **Bleskový server-side výpočet** (`FastDirSize` přes SSH `du -sb`), nezamrzající přerušitelný dialog průběhu, ochrana proti symlinkovým cyklům, **stisk mezerníku na složce** s výpočtem a posunem kurzoru a integrace klávesové zkratky **`Ctrl+Shift+F10`** i kontextového menu. |
 | **Spouštění souborů na serveru (Enter)** | Všechny soubory se stahují do Windows | **Spouštění souborů s `+x` na serveru při stisku Enter**: Pokud má soubor právo ke spuštění (skripty, binárky), stisk Enter na něm otevře konzoli a spustí `./soubor` na serveru (s podporou `sudo`). Běžné soubory se nadále otevírají lokálně ve Windows. Volitelné v profilu relace. |
 | **Navigace v adresářích** | Reset fokusu při přechodu nahoru | **Zachování fokusu kurzoru** na opuštěné složce při přechodu do nadřazeného adresáře (`..`). |
+| **Titulky tabů & mezipaměť (F3)** | Zkomolené taby (`oot@...`), vracení starého obsahu souborů z jiného serveru | **Čisté názvy tabů & spolehlivá cache**: Implementace `GetPathForMainWindowTitle` a oprava parseru adresního řádku (konec zkomolených názvů); zneplatnění mezipaměti prohlížeče zahrnutím serveru, uživatele, portu, velikosti i času modifikace souboru. |
 
 ---
 

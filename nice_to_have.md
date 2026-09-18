@@ -34,8 +34,13 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Volba chování při práci se symlinky – možnost stahovat cíl odkazu (dereference) nebo zachovat / ignorovat odkaz.
 - **Přínos**: Větší kontrola nad přenosem složitých Linuxových stromů.
 
-### 8. Hlavní heslo (Master Password) pro šifrování profilů
-- **Popis**: Možnost zabezpečit uložené relace a hesla silnou šifrou (např. AES-256-GCM) chráněnou jedním Master heslem jako alternativa k DPAPI.
-- **Přínos**: Bezpečnost při přenosu konfigurace mezi různými profily či počítači.
+### 9. Souběžné vícenásobné konexe (Per-instance CPluginFSInterface)
+- **Popis**: Převést `CSftpConnection` a `CSftpProfile` z globálního singletonu na členské objekty `CPluginFSInterface` (podle vzoru vestavěného FTP pluginu v Salamanderu).
+- **Přínos**: Umožní mít současně otevřené 2 a více různých SFTP serverů (např. v levém a pravém panelu, případně v různých tabech) a přenášet soubory mezi servery.
+
+### 10. Barevné štítky profilů pro taby (Server Color Tags)
+- **Popis**: Možnost přiřadit v nastavení připojení barvu profilu (např. červená pro produkci, oranžová pro staging, zelená pro dev/test) a při otevření relace automaticky obarvit příslušný tab v Samandarinu.
+- **Přínos**: Okamžité vizuální rozlišení prostředí a prevence nechtěných zásahů na produkčních strojích.
 
 ---
+
