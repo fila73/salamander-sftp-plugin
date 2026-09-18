@@ -24,6 +24,7 @@ Tento fork přináší řadu oprav stability, architektonických vylepšení, zv
 | **Spouštění souborů na serveru (Enter)** | Všechny soubory se stahují do Windows | **Spouštění souborů s `+x` na serveru při stisku Enter**: Pokud má soubor právo ke spuštění (skripty, binárky), stisk Enter na něm otevře konzoli a spustí `./soubor` na serveru (s podporou `sudo`). Běžné soubory se nadále otevírají lokálně ve Windows. Volitelné v profilu relace. |
 | **Navigace v adresářích** | Reset fokusu při přechodu nahoru | **Zachování fokusu kurzoru** na opuštěné složce při přechodu do nadřazeného adresáře (`..`). |
 | **Titulky tabů & mezipaměť (F3)** | Zkomolené taby (`oot@...`), vracení starého obsahu souborů z jiného serveru | **Názvy tabů se jménem konexe `[NAS]` & spolehlivá cache**: Implementace `GetPathForMainWindowTitle` s prefixem profilu (např. `[NAS] Season 29`) pro okamžité rozlišení serverů (test/stage/prod) a oprava parseru adresního řádku (konec zkomolených názvů); zneplatnění mezipaměti prohlížeče zahrnutím serveru, uživatele, portu, velikosti i času modifikace souboru. |
+| **Přenosový dialog & Dark Mode** | Zrecyklovaný mazací dialog s natvrdo zobrazeným textem "Deleting", bez rychlosti, ETA a celkového postupu | **Dedikovaný přenosový dialog se dvěma progress bary a Dark Mode**: Zobrazuje odděleně zdrojovou a cílovou cestu, název souboru, přenosovou rychlost (MB/s), zbývající čas (ETA), samostatný progress bar aktuálního souboru a celkový progress bar operace. Plná podpora Dark Mode i pro mazání a výpočet velikosti. |
 
 ---
 

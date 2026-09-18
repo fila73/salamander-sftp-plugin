@@ -120,6 +120,10 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
     case WM_INITDIALOG:
     {
+#ifdef USE_DARKMODELIB
+        WinLibApplyDarkMode(HWindow);
+#endif
+        PluginDarkMode_ApplyTitleBar(HWindow);
         // use the Salamander-styled progress bar
         ProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_PROGRESSBAR);
         if (ProgressBar == NULL)
@@ -129,6 +133,34 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         }
 
         break; // let DefDlgProc handle focus
+    }
+
+    case WM_THEMECHANGED:
+    case WM_SETTINGCHANGE:
+    {
+#ifdef USE_DARKMODELIB
+        RefreshWinLibDarkModeFromHost();
+        WinLibApplyDarkMode(HWindow);
+#endif
+        PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam);
+        PluginDarkMode_ApplyTitleBar(HWindow);
+        InvalidateRect(HWindow, NULL, TRUE);
+        break;
+    }
+
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+    {
+#ifdef USE_DARKMODELIB
+        LRESULT brush = 0;
+        if (DarkModeHandleCtlColor(uMsg, wParam, lParam, brush))
+            return (INT_PTR)brush;
+#endif
+        LRESULT darkBrush = 0;
+        if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &darkBrush))
+            return (INT_PTR)darkBrush;
+        break;
     }
 
     case WM_COMMAND:
@@ -261,12 +293,44 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
     case WM_INITDIALOG:
     {
+#ifdef USE_DARKMODELIB
+        WinLibApplyDarkMode(HWindow);
+#endif
+        PluginDarkMode_ApplyTitleBar(HWindow);
         ProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_PROGRESSBAR);
         if (ProgressBar == NULL)
         {
             DestroyWindow(HWindow);
             return FALSE;
         }
+        break;
+    }
+
+    case WM_THEMECHANGED:
+    case WM_SETTINGCHANGE:
+    {
+#ifdef USE_DARKMODELIB
+        RefreshWinLibDarkModeFromHost();
+        WinLibApplyDarkMode(HWindow);
+#endif
+        PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam);
+        PluginDarkMode_ApplyTitleBar(HWindow);
+        InvalidateRect(HWindow, NULL, TRUE);
+        break;
+    }
+
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+    {
+#ifdef USE_DARKMODELIB
+        LRESULT brush = 0;
+        if (DarkModeHandleCtlColor(uMsg, wParam, lParam, brush))
+            return (INT_PTR)brush;
+#endif
+        LRESULT darkBrush = 0;
+        if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &darkBrush))
+            return (INT_PTR)darkBrush;
         break;
     }
 
@@ -290,10 +354,319 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 //
 // ****************************************************************************
+// CSftpTransferProgressDlg
+//
+
+CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin)
+    : CCommonDialog(HLanguage, IDD_TRANSFERDLG, parent, origin)
+{
+    FileProgressBar = NULL;
+    TotalProgressBar = NULL;
+    WantCancel = FALSE;
+    LastTickCount = 0;
+
+    FromPathCache[0] = 0;
+    ToPathCache[0] = 0;
+    FileNameCache[0] = 0;
+    StatusCache[0] = 0;
+    TotalStatusCache[0] = 0;
+
+    TextCacheIsDirty = FALSE;
+    FileProgressCache = 0;
+    TotalProgressCache = 0;
+    ProgressCacheIsDirty = FALSE;
+
+    IsUpload = false;
+    StartTick = 0;
+    FileStartTick = 0;
+    FileDoneBytes = 0;
+    FileTotalBytes = 0;
+    TotalDoneBytes = 0;
+    TotalExpectedBytes = 0;
+    CurrentFileIndex = 0;
+    TotalFilesCount = 1;
+}
+
+void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes)
+{
+    IsUpload = upload;
+    StartTick = GetTickCount();
+    FileStartTick = StartTick;
+    TotalFilesCount = (totalFiles > 0) ? totalFiles : 1;
+    TotalExpectedBytes = totalExpectedBytes;
+    TotalDoneBytes = 0;
+    CurrentFileIndex = 0;
+
+    if (fromPath != NULL && fromPath[0] != 0)
+        PathCompactPathExA(FromPathCache, fromPath, 64, 0);
+    else
+        lstrcpynA(FromPathCache, "-", sizeof(FromPathCache));
+
+    if (toPath != NULL && toPath[0] != 0)
+        PathCompactPathExA(ToPathCache, toPath, 64, 0);
+    else
+        lstrcpynA(ToPathCache, "-", sizeof(ToPathCache));
+
+    lstrcpynA(FileNameCache, "...", sizeof(FileNameCache));
+    lstrcpynA(StatusCache, "Connecting...", sizeof(StatusCache));
+    if (TotalFilesCount > 1)
+        _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: 0 / %d items", TotalFilesCount);
+    else
+        TotalStatusCache[0] = 0;
+
+    TextCacheIsDirty = TRUE;
+    ProgressCacheIsDirty = TRUE;
+
+    if (HWindow != NULL)
+    {
+        FlushDataToControls();
+    }
+}
+
+void CSftpTransferProgressDlg::SetCurrentFile(const char* fileName, unsigned __int64 fileSize)
+{
+    const char* base = strrchr(fileName, '\\');
+    const char* b2 = strrchr(fileName, '/');
+    if (b2 > base)
+        base = b2;
+    base = (base != NULL) ? base + 1 : fileName;
+
+    lstrcpynA(FileNameCache, base, sizeof(FileNameCache));
+    FileStartTick = GetTickCount();
+    FileDoneBytes = 0;
+    FileTotalBytes = fileSize;
+    FileProgressCache = 0;
+
+    CurrentFileIndex++;
+    if (CurrentFileIndex > TotalFilesCount)
+        TotalFilesCount = CurrentFileIndex;
+
+    if (fileSize >= 1048576)
+        _snprintf_s(StatusCache, _TRUNCATE, "0.0 / %.1f MB  (0.00 MB/s)", (double)fileSize / 1048576.0);
+    else
+        _snprintf_s(StatusCache, _TRUNCATE, "0 / %I64u kB  (0.00 MB/s)", fileSize / 1024);
+
+    if (TotalFilesCount > 1)
+        _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d", CurrentFileIndex, TotalFilesCount);
+    else
+        TotalStatusCache[0] = 0;
+
+    TextCacheIsDirty = TRUE;
+    ProgressCacheIsDirty = TRUE;
+    FlushDataToControls();
+}
+
+void CSftpTransferProgressDlg::UpdateFileProgress(unsigned __int64 done, unsigned __int64 total)
+{
+    FileDoneBytes = done;
+    if (total > 0)
+        FileTotalBytes = total;
+
+    DWORD now = GetTickCount();
+    DWORD elapsed = now - FileStartTick;
+    double speedMB = elapsed > 0 ? ((double)done * 1000.0 / elapsed) / 1048576.0 : 0.0;
+
+    char etaStr[64] = "";
+    if (speedMB > 0.01 && FileTotalBytes > done)
+    {
+        unsigned __int64 remBytes = FileTotalBytes - done;
+        int remSec = (int)((double)remBytes / (speedMB * 1048576.0));
+        if (remSec >= 3600)
+            _snprintf_s(etaStr, _TRUNCATE, " - ETA: %d:%02d:%02d", remSec / 3600, (remSec % 3600) / 60, remSec % 60);
+        else
+            _snprintf_s(etaStr, _TRUNCATE, " - ETA: %02d:%02d", remSec / 60, remSec % 60);
+    }
+
+    if (FileTotalBytes > 0)
+    {
+        if (FileTotalBytes >= 1048576)
+        {
+            _snprintf_s(StatusCache, _TRUNCATE, "%.1f / %.1f MB  (%.2f MB/s)%s",
+                        (double)done / 1048576.0, (double)FileTotalBytes / 1048576.0, speedMB, etaStr);
+        }
+        else
+        {
+            _snprintf_s(StatusCache, _TRUNCATE, "%I64u / %I64u kB  (%.2f MB/s)%s",
+                        done / 1024, FileTotalBytes / 1024, speedMB, etaStr);
+        }
+        FileProgressCache = (DWORD)(done * 1000 / FileTotalBytes);
+    }
+    else
+    {
+        _snprintf_s(StatusCache, _TRUNCATE, "%I64u kB  (%.2f MB/s)", done / 1024, speedMB);
+        FileProgressCache = 0;
+    }
+
+    if (TotalFilesCount > 1)
+    {
+        _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d", CurrentFileIndex, TotalFilesCount);
+        TotalProgressCache = (DWORD)(((CurrentFileIndex - 1) * 1000 + FileProgressCache) / TotalFilesCount);
+    }
+    else
+    {
+        TotalProgressCache = FileProgressCache;
+    }
+
+    TextCacheIsDirty = TRUE;
+    ProgressCacheIsDirty = TRUE;
+}
+
+void CSftpTransferProgressDlg::UpdateTotalProgress(int fileIndex, unsigned __int64 totalBytesDone)
+{
+    CurrentFileIndex = fileIndex;
+    TotalDoneBytes = totalBytesDone;
+    if (TotalFilesCount > 1)
+    {
+        _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d", CurrentFileIndex, TotalFilesCount);
+        TotalProgressCache = (DWORD)((CurrentFileIndex - 1) * 1000 / TotalFilesCount);
+    }
+    TextCacheIsDirty = TRUE;
+    ProgressCacheIsDirty = TRUE;
+}
+
+void CSftpTransferProgressDlg::EnableCancel(BOOL enable)
+{
+    if (HWindow != NULL)
+    {
+        HWND cancel = GetDlgItem(HWindow, IDCANCEL);
+        if (IsWindowEnabled(cancel) != enable)
+        {
+            EnableWindow(cancel, enable);
+            if (enable)
+                SetFocus(cancel);
+            PostMessage(cancel, BM_SETSTYLE, enable ? BS_DEFPUSHBUTTON : BS_PUSHBUTTON, TRUE);
+
+            MSG msg;
+            while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            {
+                if (!IsWindow(HWindow) || !IsDialogMessage(HWindow, &msg))
+                {
+                    TranslateMessage(&msg);
+                    DispatchMessage(&msg);
+                }
+            }
+        }
+    }
+}
+
+BOOL CSftpTransferProgressDlg::GetWantCancel()
+{
+    MSG msg;
+    while (PeekMessage(&msg, NULL, 0, 0, TRUE))
+    {
+        if (!IsWindow(HWindow) || !IsDialogMessage(HWindow, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    DWORD ticks = GetTickCount();
+    if (ticks - LastTickCount > 80)
+    {
+        LastTickCount = ticks;
+        FlushDataToControls();
+    }
+
+    return WantCancel;
+}
+
+void CSftpTransferProgressDlg::FlushDataToControls()
+{
+    if (HWindow != NULL)
+    {
+        if (TextCacheIsDirty)
+        {
+            SetDlgItemText(HWindow, IDT_TR_FROM_PATH, FromPathCache);
+            SetDlgItemText(HWindow, IDT_TR_TO_PATH, ToPathCache);
+            SetDlgItemText(HWindow, IDT_TR_FILE_NAME, FileNameCache);
+            SetDlgItemText(HWindow, IDT_TR_STATUS, StatusCache);
+            SetDlgItemText(HWindow, IDT_TR_TOTAL_STATUS, TotalStatusCache);
+            TextCacheIsDirty = FALSE;
+        }
+
+        if (ProgressCacheIsDirty)
+        {
+            if (FileProgressBar != NULL)
+                FileProgressBar->SetProgress(FileProgressCache, NULL);
+            if (TotalProgressBar != NULL)
+                TotalProgressBar->SetProgress(TotalProgressCache, NULL);
+            ProgressCacheIsDirty = FALSE;
+        }
+    }
+}
+
+INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+    case WM_INITDIALOG:
+    {
+#ifdef USE_DARKMODELIB
+        WinLibApplyDarkMode(HWindow);
+#endif
+        PluginDarkMode_ApplyTitleBar(HWindow);
+        FileProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_FILE_PROGRESS);
+        TotalProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_TOTAL_PROGRESS);
+        if (FileProgressBar == NULL || TotalProgressBar == NULL)
+        {
+            DestroyWindow(HWindow);
+            return FALSE;
+        }
+        break;
+    }
+
+    case WM_THEMECHANGED:
+    case WM_SETTINGCHANGE:
+    {
+#ifdef USE_DARKMODELIB
+        RefreshWinLibDarkModeFromHost();
+        WinLibApplyDarkMode(HWindow);
+#endif
+        PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam);
+        PluginDarkMode_ApplyTitleBar(HWindow);
+        InvalidateRect(HWindow, NULL, TRUE);
+        break;
+    }
+
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+    {
+#ifdef USE_DARKMODELIB
+        LRESULT brush = 0;
+        if (DarkModeHandleCtlColor(uMsg, wParam, lParam, brush))
+            return (INT_PTR)brush;
+#endif
+        LRESULT darkBrush = 0;
+        if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &darkBrush))
+            return (INT_PTR)darkBrush;
+        break;
+    }
+
+    case WM_COMMAND:
+    {
+        if (LOWORD(wParam) == IDCANCEL)
+        {
+            if (!WantCancel)
+            {
+                WantCancel = TRUE;
+                EnableCancel(FALSE);
+            }
+            return TRUE;
+        }
+        break;
+    }
+    }
+    return CCommonDialog::DialogProc(uMsg, wParam, lParam);
+}
+
+//
+// ****************************************************************************
 // Transfer progress (with speed)
 //
 
-static CDeleteProgressDlg* g_ProgDlg = NULL;
+static CSftpTransferProgressDlg* g_ProgDlg = NULL;
 static HWND g_ProgMainWnd = NULL;
 static char g_ProgFile[MAX_PATH] = "";
 static DWORD g_ProgStartTick = 0;
@@ -410,30 +783,17 @@ static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 d
 {
     if (g_ProgDlg == NULL)
         return true;
-    // new file -> reset speed measurement
     if (strcmp(g_ProgFile, name) != 0)
     {
         lstrcpyn(g_ProgFile, name, MAX_PATH);
         g_ProgStartTick = GetTickCount();
+        g_ProgDlg->SetCurrentFile(name, total);
     }
-    DWORD elapsed = GetTickCount() - g_ProgStartTick;
-    double speedMB = elapsed > 0 ? ((double)done * 1000.0 / elapsed) / 1048576.0 : 0.0;
-    const char* base = strrchr(name, '\\');
-    const char* base2 = strrchr(name, '/');
-    if (base2 > base)
-        base = base2;
-    base = (base != NULL) ? base + 1 : name;
-    char txt[2 * MAX_PATH];
-    if (total > 0)
-        _snprintf_s(txt, _TRUNCATE, "%s   %I64u / %I64u kB   (%.2f MB/s)", base, done / 1024, total / 1024, speedMB);
-    else
-        _snprintf_s(txt, _TRUNCATE, "%s   %I64u kB   (%.2f MB/s)", base, done / 1024, speedMB);
-    DWORD prog = total > 0 ? (DWORD)(done * 1000 / total) : 0;
-    g_ProgDlg->Set(txt, prog, TRUE);
+    g_ProgDlg->UpdateFileProgress(done, total);
     return !g_ProgDlg->GetWantCancel();
 }
 
-static void SftpProgressBegin(HWND parent)
+static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0)
 {
     g_ProgMainWnd = parent;
     HWND pw;
@@ -445,11 +805,11 @@ static void SftpProgressBegin(HWND parent)
     g_OvrMode = 0;
     g_OvrCancel = false;
     g_OvrParent = parent;
-    g_ProgDlg = new CDeleteProgressDlg(g_ProgMainWnd, ooStatic);
+    g_ProgDlg = new CSftpTransferProgressDlg(g_ProgMainWnd, ooStatic);
     if (g_ProgDlg != NULL && g_ProgDlg->Create() != NULL)
     {
         SetForegroundWindow(g_ProgDlg->HWindow);
-        g_ProgDlg->Set("Connecting...", 0, FALSE);
+        g_ProgDlg->SetOperationInfo(upload, fromPath, toPath, totalFiles, totalExpectedBytes);
         g_OvrParent = g_ProgDlg->HWindow;
         CSftpConnection::SetProgressCallback(SftpProgressCallback, NULL);
     }
@@ -1881,7 +2241,8 @@ void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int d
 {
     if (!SftpEnsureConnected(parent))
         return;
-    SftpProgressBegin(parent);
+    bool isUpload = (direction == 1);
+    SftpProgressBegin(parent, isUpload, isUpload ? localDir : remoteDir, isUpload ? remoteDir : localDir);
     g_SyncMode = 1;
     bool ok;
     if (direction == 0)
@@ -2245,11 +2606,12 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         GetTempPath(MAX_PATH, tmpDir);
 
         BOOL focusedF = (selectedFiles == 0 && selectedDirs == 0);
+        int totalFilesF = focusedF ? 1 : (selectedFiles + selectedDirs);
         int indexF = 0;
         BOOL isDirF = FALSE;
         BOOL okF = TRUE;
         const CFileData* ff;
-        SftpProgressBegin(parent);
+        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF);
         while (1)
         {
             ff = focusedF ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDirF)
@@ -2298,11 +2660,12 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     }
 
     BOOL focused = (selectedFiles == 0 && selectedDirs == 0);
+    int totalFiles = focused ? 1 : (selectedFiles + selectedDirs);
     int index = 0;
     BOOL isDir = FALSE;
     BOOL success = TRUE;
     const CFileData* f;
-    SftpProgressBegin(parent);
+    SftpProgressBegin(parent, false, Path, target, totalFiles);
     while (1)
     {
         f = focused ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDir)
@@ -2412,7 +2775,8 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     DWORD attr;
     FILETIME lastWrite;
     BOOL success = TRUE;
-    SftpProgressBegin(parent);
+    int totalFiles = (sourceFiles == 0 && sourceDirs == 0) ? 1 : (sourceFiles + sourceDirs);
+    SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles);
     while ((name = next(NULL, 0, &dosName, &isDir, &size, &attr, &lastWrite, nextParam, NULL)) != NULL)
     {
         // 'name' is relative name; full local path = sourcePath + name

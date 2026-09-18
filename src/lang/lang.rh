@@ -69,6 +69,17 @@
 #define IDC_CMD_INFO                    611
 #define IDC_CMD_OUTPUT                  612
 #define IDC_CMD_BTN                     613
+#define IDD_TRANSFERDLG                 620
+#define IDT_TR_FROM_LABEL               621
+#define IDT_TR_FROM_PATH                622
+#define IDT_TR_TO_LABEL                 623
+#define IDT_TR_TO_PATH                  624
+#define IDT_TR_FILE_LABEL               625
+#define IDT_TR_FILE_NAME                626
+#define IDT_TR_STATUS                   627
+#define IDP_TR_FILE_PROGRESS            628
+#define IDT_TR_TOTAL_STATUS             629
+#define IDP_TR_TOTAL_PROGRESS           630
 #define IDP_PROGRESSBAR                 542
 #define IDD_CTRLEXAMPLE                 550
 #define IDC_CE_ST                       551

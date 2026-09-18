@@ -17,6 +17,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shlwapi.h>
 #ifdef _MSC_VER
 #include <crtdbg.h>
 #endif // _MSC_VER

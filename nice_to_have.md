@@ -42,5 +42,7 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Možnost přiřadit v nastavení připojení barvu profilu (např. červená pro produkci, oranžová pro staging, zelená pro dev/test) a při otevření relace automaticky obarvit příslušný tab v Samandarinu.
 - **Přínos**: Okamžité vizuální rozlišení prostředí a prevence nechtěných zásahů na produkčních strojích.
 
----
+### 11. Plně asynchronní nemodální přenosový dialog s během na pozadí (Phase B)
+- **Popis**: Rozšíření přenosového dialogu o běh na pozadí (tlačítko 'Na pozadí' / 'Hide') a vyčlenění přenosů do dedikovaného pracovního vlákna (worker thread) s frontou úloh. Salamander panely zůstanou plně interaktivní i během stahování a nahrávání velkých objemů dat.
+- **Závislost**: Vyžaduje per-instance konexe (viz bod 9), aby bylo možné při přenosu paralelně procházet a provádět operace ve vzdálených panelech bez blokování jediného SSH/SFTP socketu.
 

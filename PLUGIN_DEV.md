@@ -128,3 +128,27 @@ Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
               file.LastWrite.dwHighDateTime, file.LastWrite.dwLowDateTime);
   ```
 - Tím se garantuje okamžité stažení nové verze při změně souboru na serveru i při přepnutí mezi různými servery se stejnou strukturou cest.
+
+---
+
+## 8. Přenosové dialogy a podpora Dark Mode (Transfer Dialogs & Theming)
+
+### Přenosový dialog (`CSftpTransferProgressDlg` / `IDD_TRANSFERDLG`):
+1. **Dva progress bary**:
+   - `IDP_TR_FILE_PROGRESS` – průběh přenosu aktuálního souboru (0 až 1000 promile).
+   - `IDP_TR_TOTAL_PROGRESS` – celkový průběh celé operace (stahování/nahrávání více položek).
+2. **Připojení k tématu Salamandera**:
+   - V `WM_INITDIALOG` se volá `SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_FILE_PROGRESS)` a `SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_TOTAL_PROGRESS)`, což zajistí správné vykreslování v nativním stylu a barvách Salamandera.
+3. **Plná podpora Dark Mode**:
+   - Využívá sdílený modul `plugindarkmode.h` (`../salamander-plugins/salamand/plugins/shared/plugindarkmode.o`).
+   - V `WM_INITDIALOG`: `PluginDarkMode_ApplyTitleBar(HWindow);` (obarví záhlaví okna do tmavého tématu přes DwmSetWindowAttribute).
+   - V dialogové proceduře:
+     - `PluginDarkMode_HandleThemeMessage(HWindow, uMsg, wParam, lParam);`
+     - Při `WM_CTLCOLORDLG` a `WM_CTLCOLORSTATIC`:
+       ```cpp
+       LRESULT lr = 0;
+       if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &lr))
+           return (INT_PTR)lr;
+       ```
+   - Stejný postup je aplikován i pro `CCalcSizeProgressDlg` a `CDeleteProgressDlg`.
+

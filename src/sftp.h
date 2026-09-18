@@ -482,6 +482,57 @@ protected:
 
 //
 // ****************************************************************************
+// CSftpTransferProgressDlg
+//
+// dedicated progress dialog for file transfers (upload/download) with Dark Mode support
+//
+
+class CSftpTransferProgressDlg : public CCommonDialog
+{
+protected:
+    CGUIProgressBarAbstract* FileProgressBar;
+    CGUIProgressBarAbstract* TotalProgressBar;
+    BOOL WantCancel;
+    DWORD LastTickCount;
+
+    char FromPathCache[MAX_PATH * 2];
+    char ToPathCache[MAX_PATH * 2];
+    char FileNameCache[MAX_PATH];
+    char StatusCache[256];
+    char TotalStatusCache[256];
+
+    BOOL TextCacheIsDirty;
+    DWORD FileProgressCache;
+    DWORD TotalProgressCache;
+    BOOL ProgressCacheIsDirty;
+
+    bool IsUpload;
+    DWORD StartTick;
+    DWORD FileStartTick;
+    unsigned __int64 FileDoneBytes;
+    unsigned __int64 FileTotalBytes;
+    unsigned __int64 TotalDoneBytes;
+    unsigned __int64 TotalExpectedBytes;
+    int CurrentFileIndex;
+    int TotalFilesCount;
+
+public:
+    CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
+
+    void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes);
+    void SetCurrentFile(const char* fileName, unsigned __int64 fileSize);
+    void UpdateFileProgress(unsigned __int64 done, unsigned __int64 total);
+    void UpdateTotalProgress(int fileIndex, unsigned __int64 totalBytesDone);
+    BOOL GetWantCancel();
+
+protected:
+    virtual INT_PTR DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
+    void EnableCancel(BOOL enable);
+    void FlushDataToControls();
+};
+
+//
+// ****************************************************************************
 // CPluginFSDataInterface
 //
 
