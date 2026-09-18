@@ -387,6 +387,50 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     TotalFilesCount = 1;
 }
 
+static bool SftpIsPathRemote(const char* p)
+{
+    if (p == NULL || p[0] == 0)
+        return false;
+    if (p[0] == '[')
+        return false;
+    if (strncmp(p, "sftp://", 7) == 0 || strncmp(p, "scp://", 6) == 0)
+        return true;
+    if (p[0] == '/')
+        return true;
+    if (isalpha((unsigned char)p[0]) && p[1] == ':' && (p[2] == '\\' || p[2] == '/'))
+        return false;
+    if ((p[0] == '\\' || p[0] == '/') && (p[1] == '\\' || p[1] == '/'))
+        return false;
+    return true;
+}
+
+static void SftpFormatTransferPath(const char* inPath, bool forceRemote, char* outBuf, int outBufSize)
+{
+    if (inPath == NULL || inPath[0] == 0)
+    {
+        lstrcpynA(outBuf, "-", outBufSize);
+        return;
+    }
+
+    char full[MAX_PATH * 2];
+    bool isRemote = forceRemote || SftpIsPathRemote(inPath);
+    const char* connName = SftpProfile.Name[0] != 0 ? SftpProfile.Name : SftpProfile.Host;
+
+    if (isRemote && connName != NULL && connName[0] != 0 && inPath[0] != '[')
+    {
+        _snprintf_s(full, sizeof(full), _TRUNCATE, "[%s] %s", connName, inPath);
+    }
+    else
+    {
+        lstrcpynA(full, inPath, sizeof(full));
+    }
+
+    int maxChars = 80;
+    if (maxChars >= outBufSize)
+        maxChars = outBufSize - 1;
+    PathCompactPathExA(outBuf, full, maxChars, 0);
+}
+
 void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes)
 {
     IsUpload = upload;
@@ -397,15 +441,8 @@ void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPat
     TotalDoneBytes = 0;
     CurrentFileIndex = 0;
 
-    if (fromPath != NULL && fromPath[0] != 0)
-        PathCompactPathExA(FromPathCache, fromPath, 64, 0);
-    else
-        lstrcpynA(FromPathCache, "-", sizeof(FromPathCache));
-
-    if (toPath != NULL && toPath[0] != 0)
-        PathCompactPathExA(ToPathCache, toPath, 64, 0);
-    else
-        lstrcpynA(ToPathCache, "-", sizeof(ToPathCache));
+    SftpFormatTransferPath(fromPath, !upload, FromPathCache, sizeof(FromPathCache));
+    SftpFormatTransferPath(toPath, upload, ToPathCache, sizeof(ToPathCache));
 
     lstrcpynA(FileNameCache, "...", sizeof(FileNameCache));
     lstrcpynA(StatusCache, "Connecting...", sizeof(StatusCache));
@@ -606,6 +643,17 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         WinLibApplyDarkMode(HWindow);
 #endif
         PluginDarkMode_ApplyTitleBar(HWindow);
+        const char* connName = SftpProfile.Name[0] != 0 ? SftpProfile.Name : SftpProfile.Host;
+        if (connName[0] != 0)
+        {
+            char curTitle[128];
+            if (GetWindowText(HWindow, curTitle, sizeof(curTitle)) > 0 && curTitle[0] != '[')
+            {
+                char newTitle[256];
+                _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "[%s] %s", connName, curTitle);
+                SetWindowText(HWindow, newTitle);
+            }
+        }
         FileProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_FILE_PROGRESS);
         TotalProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_TOTAL_PROGRESS);
         if (FileProgressBar == NULL || TotalProgressBar == NULL)

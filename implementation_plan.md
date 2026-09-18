@@ -84,6 +84,8 @@ Tento plán popisuje realizaci Fáze A pro plugin SFTP v Open Salamanderu: nahra
 - [x] Deklarace `CSftpTransferProgressDlg` v `src/sftp.h`
 - [x] Implementace `CSftpTransferProgressDlg` a Dark Mode v `src/fs2.cpp`
 - [x] Předávání informací o operaci v `SftpSyncDir`, `CopyOrMoveFromFS`, `CopyOrMoveToFS`
+- [x] Zobrazení jména konexe `[NAS]` ve vzdálených cestách (`From:` / `To:`) a v záhlaví okna přenosu
 - [x] Kompilace a ověření buildů `sftp.spl`, `english.slg`, `czech.slg`
 - [x] Aktualizace dokumentace (`PLUGIN_DEV.md`, `jobs_done.md`, `README_CZ.md`, `README.md`, `nice_to_have.md`)
+
 

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <assert.h>
 #include <windows.h>
+#include <shlwapi.h>
 
 // Standalone verification of the path parsing and title logic
 static BOOL TestGetNextDirectoryLineHotPath(const char* text, int pathLen, int& offset)
@@ -104,6 +105,49 @@ static BOOL TestGetPathForMainWindowTitle(const char* Path, const char* hostPref
     return FALSE;
 }
 
+static bool TestIsPathRemote(const char* p)
+{
+    if (p == NULL || p[0] == 0)
+        return false;
+    if (p[0] == '[')
+        return false;
+    if (strncmp(p, "sftp://", 7) == 0 || strncmp(p, "scp://", 6) == 0)
+        return true;
+    if (p[0] == '/')
+        return true;
+    if (isalpha((unsigned char)p[0]) && p[1] == ':' && (p[2] == '\\' || p[2] == '/'))
+        return false;
+    if ((p[0] == '\\' || p[0] == '/') && (p[1] == '\\' || p[1] == '/'))
+        return false;
+    return true;
+}
+
+static void TestFormatTransferPath(const char* inPath, bool forceRemote, const char* connName, char* outBuf, int outBufSize)
+{
+    if (inPath == NULL || inPath[0] == 0)
+    {
+        lstrcpynA(outBuf, "-", outBufSize);
+        return;
+    }
+
+    char full[MAX_PATH * 2];
+    bool isRemote = forceRemote || TestIsPathRemote(inPath);
+
+    if (isRemote && connName != NULL && connName[0] != 0 && inPath[0] != '[')
+    {
+        _snprintf_s(full, sizeof(full), _TRUNCATE, "[%s] %s", connName, inPath);
+    }
+    else
+    {
+        lstrcpynA(full, inPath, sizeof(full));
+    }
+
+    int maxChars = 80;
+    if (maxChars >= outBufSize)
+        maxChars = outBufSize - 1;
+    PathCompactPathExA(outBuf, full, maxChars, 0);
+}
+
 int main()
 {
     printf("Running path hottrack & tab title unit tests...\n");
@@ -162,6 +206,31 @@ int main()
     assert(strstr(cacheKey, "root@10.0.1.35") != NULL);
     assert(strstr(cacheKey, ":4225:01dc481b0a234567") != NULL);
 
-    printf("\nALL PATH & CACHE TESTS PASSED SUCCESSFULLY!\n");
+    // Test Transfer Progress Path formatting with [NAS]
+    char fromBuf[MAX_PATH * 2], toBuf[MAX_PATH * 2];
+    // Download: from remote to local
+    TestFormatTransferPath("/mnt/Enko/nas/Serialy/South Park/Season 29", true, "NAS", fromBuf, sizeof(fromBuf));
+    TestFormatTransferPath("C:\\Users\\filip\\Downloads", false, "NAS", toBuf, sizeof(toBuf));
+    printf("Download From (remote): '%s'\n", fromBuf);
+    printf("Download To (local): '%s'\n", toBuf);
+    assert(strcmp(fromBuf, "[NAS] /mnt/Enko/nas/Serialy/South Park/Season 29") == 0);
+    assert(strcmp(toBuf, "C:\\Users\\filip\\Downloads") == 0);
+
+    // Upload: from local to remote
+    TestFormatTransferPath("C:\\Users\\filip\\Videos\\clip.mp4", false, "NAS", fromBuf, sizeof(fromBuf));
+    TestFormatTransferPath("/mnt/Enko/nas/Serialy/South Park/Season 29", true, "NAS", toBuf, sizeof(toBuf));
+    printf("Upload From (local): '%s'\n", fromBuf);
+    printf("Upload To (remote): '%s'\n", toBuf);
+    assert(strcmp(fromBuf, "C:\\Users\\filip\\Videos\\clip.mp4") == 0);
+    assert(strcmp(toBuf, "[NAS] /mnt/Enko/nas/Serialy/South Park/Season 29") == 0);
+
+    // Long path compacting with [NAS] prefix preserved
+    char longBuf[MAX_PATH * 2];
+    TestFormatTransferPath("/mnt/Enko/nas/Serialy/South Park/Season 29/VeryLongDirectoryNameThatExceedsTheBufferLengthAndShouldBeTruncated/subfolder", true, "NAS", longBuf, sizeof(longBuf));
+    printf("Long path compacted: '%s'\n", longBuf);
+    assert(strncmp(longBuf, "[NAS] ", 6) == 0);
+    assert(strstr(longBuf, "...") != NULL);
+
+    printf("\nALL PATH, PROGRESS & CACHE TESTS PASSED SUCCESSFULLY!\n");
     return 0;
 }

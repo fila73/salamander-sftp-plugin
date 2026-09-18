@@ -151,4 +151,8 @@ Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
            return (INT_PTR)lr;
        ```
    - Stejný postup je aplikován i pro `CCalcSizeProgressDlg` a `CDeleteProgressDlg`.
+4. **Prefix aktivní konexe `[NAS]` v cestách a titulku**:
+   - Vzdálené cesty v polích `From:` a `To:` jsou formátovány pomocí `SftpFormatTransferPath`: detekuje se vzdálená cesta (`SftpIsPathRemote`) a automaticky se předřadí jméno aktivního profilu `[NAS] /cesta` s následným zkrácením přes `PathCompactPathExA` (prefix `[NAS]` zůstává vždy zachován).
+   - Titulek okna v `WM_INITDIALOG` je rovněž obohacen o prefix `[Jméno_konexe]`, což uživateli umožňuje okamžitě vidět, ke kterému serveru operace náleží.
+
 
