@@ -23,7 +23,7 @@ This fork introduces significant stability fixes, architecture improvements, enh
 | **Directory Size Calculation** | Standard manual traversal | **Fast server-side calculation** (`FastDirSize` via SSH `du -sb`), non-blocking cancelable progress dialog, symlink cycle protection, **Spacebar on folder** calculation with auto-advance, and **`Ctrl+Shift+F10`** hotkey + context menu integration. |
 | **Server File Execution (Enter)** | All files downloaded to Windows | **Direct server execution for `+x` files upon Enter**: If a file has executable permissions (scripts, binaries), pressing Enter runs `./file` directly on the server in the streaming console (with `sudo` support). Non-executable files continue opening locally in Windows. Fully configurable per profile. |
 | **Directory Navigation** | Reset focus on parent entry | **Preserves cursor focus** on the exited folder when navigating up (`..`). |
-| **Tab Titles & Viewer Cache (F3)** | Corrupted tab names (`oot@...`), stale file contents from other servers | **Clean tab titles & reliable cache**: Implementation of `GetPathForMainWindowTitle` and address bar parser fix (no corrupted tab captions); disk cache invalidation including host, user, port, remote path, file size, and modification timestamp. |
+| **Tab Titles & Viewer Cache (F3)** | Corrupted tab names (`oot@...`), stale file contents from other servers | **Connection Name `[NAS]` in Tab Titles & Reliable Cache**: Implementation of `GetPathForMainWindowTitle` with connection profile prefix (e.g. `[NAS] Season 29`) to easily distinguish servers (test/stage/prod), address bar parser fix; disk cache invalidation including host, user, port, remote path, file size, and modification timestamp. |
 
 ---
 

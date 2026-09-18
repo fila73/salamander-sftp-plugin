@@ -37,41 +37,46 @@ static BOOL TestGetNextDirectoryLineHotPath(const char* text, int pathLen, int& 
     return s < end;
 }
 
-static BOOL TestGetPathForMainWindowTitle(const char* Path, const char* hostPrefix, const char* fsName, int mode, char* buf, int bufSize)
+static BOOL TestGetPathForMainWindowTitle(const char* Path, const char* hostPrefix, const char* connName, const char* fsName, int mode, char* buf, int bufSize)
 {
     if (buf == NULL || bufSize <= 0)
         return FALSE;
 
     if (mode == 1) // "Directory Name Only"
     {
-        if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
+        char dirName[MAX_PATH] = "/";
+        if (Path[0] != 0 && !(Path[0] == '/' && Path[1] == 0) && !(Path[0] == '\\' && Path[1] == 0))
         {
-            lstrcpyn(buf, "/", bufSize);
-            return TRUE;
+            const char* p = Path + strlen(Path);
+            while (p > Path && (*(p - 1) == '/' || *(p - 1) == '\\'))
+                p--;
+            const char* end = p;
+            while (p > Path && *(p - 1) != '/' && *(p - 1) != '\\')
+                p--;
+            int len = (int)(end - p);
+            if (len > 0)
+            {
+                if (len >= MAX_PATH)
+                    len = MAX_PATH - 1;
+                memcpy(dirName, p, len);
+                dirName[len] = 0;
+            }
         }
-        const char* p = Path + strlen(Path);
-        while (p > Path && (*(p - 1) == '/' || *(p - 1) == '\\'))
-            p--;
-        const char* end = p;
-        while (p > Path && *(p - 1) != '/' && *(p - 1) != '\\')
-            p--;
-        int len = (int)(end - p);
-        if (len <= 0)
-        {
-            lstrcpyn(buf, "/", bufSize);
-            return TRUE;
-        }
-        if (len >= bufSize)
-            len = bufSize - 1;
-        memcpy(buf, p, len);
-        buf[len] = 0;
+
+        if (connName != NULL && connName[0] != 0)
+            _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s", connName, dirName);
+        else
+            lstrcpyn(buf, dirName, bufSize);
         return TRUE;
     }
     else if (mode == 2) // "Shortened Path"
     {
         if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
         {
-            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/", fsName, hostPrefix);
+            if (connName != NULL && connName[0] != 0)
+                _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s:%s/", connName, fsName, hostPrefix);
+            else
+                _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/", fsName, hostPrefix);
             return TRUE;
         }
         const char* p = Path + strlen(Path);
@@ -82,11 +87,17 @@ static BOOL TestGetPathForMainWindowTitle(const char* Path, const char* hostPref
             p--;
         if (p <= Path + 1)
         {
-            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s%s", fsName, hostPrefix, Path);
+            if (connName != NULL && connName[0] != 0)
+                _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s:%s%s", connName, fsName, hostPrefix, Path);
+            else
+                _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s%s", fsName, hostPrefix, Path);
             return TRUE;
         }
         int len = (int)(end - p);
-        _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/.../%.*s", fsName, hostPrefix, len, p);
+        if (connName != NULL && connName[0] != 0)
+            _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s:%s/.../%.*s", connName, fsName, hostPrefix, len, p);
+        else
+            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/.../%.*s", fsName, hostPrefix, len, p);
         return TRUE;
     }
 
@@ -120,24 +131,24 @@ int main()
         assert(strncmp(fullPath + offsets[i], "oot@", 4) != 0);
     }
 
-    // Test Title Mode 1 (Directory Name Only - Tab title)
+    // Test Title Mode 1 (Directory Name Only - Tab title) with profile name [NAS]
     char titleBuf[256];
-    BOOL res1 = TestGetPathForMainWindowTitle("/mnt/Enko/nas/Serialy/South Park/Season 29", "//root@10.0.1.35", "sftp", 1, titleBuf, sizeof(titleBuf));
+    BOOL res1 = TestGetPathForMainWindowTitle("/mnt/Enko/nas/Serialy/South Park/Season 29", "//root@10.0.1.35", "NAS", "sftp", 1, titleBuf, sizeof(titleBuf));
     assert(res1);
-    printf("Tab title (mode 1): '%s'\n", titleBuf);
-    assert(strcmp(titleBuf, "Season 29") == 0);
+    printf("Tab title with profile (mode 1): '%s'\n", titleBuf);
+    assert(strcmp(titleBuf, "[NAS] Season 29") == 0);
 
-    // Test Title Mode 1 root
-    BOOL resRoot = TestGetPathForMainWindowTitle("/", "//root@10.0.1.35", "sftp", 1, titleBuf, sizeof(titleBuf));
+    // Test Title Mode 1 root with profile name [NAS]
+    BOOL resRoot = TestGetPathForMainWindowTitle("/", "//root@10.0.1.35", "NAS", "sftp", 1, titleBuf, sizeof(titleBuf));
     assert(resRoot);
-    printf("Tab title (mode 1 root): '%s'\n", titleBuf);
-    assert(strcmp(titleBuf, "/") == 0);
+    printf("Tab title root with profile (mode 1): '%s'\n", titleBuf);
+    assert(strcmp(titleBuf, "[NAS] /") == 0);
 
-    // Test Title Mode 2 (Shortened Path)
-    BOOL res2 = TestGetPathForMainWindowTitle("/mnt/Enko/nas/Serialy/South Park/Season 29", "//root@10.0.1.35", "sftp", 2, titleBuf, sizeof(titleBuf));
+    // Test Title Mode 2 (Shortened Path) with profile name [NAS]
+    BOOL res2 = TestGetPathForMainWindowTitle("/mnt/Enko/nas/Serialy/South Park/Season 29", "//root@10.0.1.35", "NAS", "sftp", 2, titleBuf, sizeof(titleBuf));
     assert(res2);
-    printf("Shortened path (mode 2): '%s'\n", titleBuf);
-    assert(strcmp(titleBuf, "sftp://root@10.0.1.35/.../Season 29") == 0);
+    printf("Shortened path with profile (mode 2): '%s'\n", titleBuf);
+    assert(strcmp(titleBuf, "[NAS] sftp://root@10.0.1.35/.../Season 29") == 0);
 
     // Test Cache Key generation
     char cacheKey[512];

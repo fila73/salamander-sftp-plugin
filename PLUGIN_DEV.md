@@ -115,8 +115,8 @@ Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
 
 ### Titulky tabů a adresní řádek:
 1. **`GetPathForMainWindowTitle`**:
-   - `mode == 1` (**Directory Name Only**): Salamander volá pro titulky záložek (tabů). Plugin vrací název aktuální podsložky (např. `Season 29` nebo `/` pro root).
-   - `mode == 2` (**Shortened Path**): Salamander volá pro záhlaví okna. Plugin vrací zkrácenou cestu `sftp://user@host[:port]/.../podsložka`.
+   - `mode == 1` (**Directory Name Only**): Salamander volá pro titulky záložek (tabů). Plugin vrací název profilu v hranatých závorkách následovaný mezerou a názvem podsložky (např. `[NAS] Season 29` nebo `[NAS] /`). Pokud profil nemá jméno, použije se hostname nebo čistý název složky.
+   - `mode == 2` (**Shortened Path**): Salamander volá pro záhlaví okna. Plugin vrací zkrácenou cestu `[NAS] sftp://user@host[:port]/.../podsložka`.
 2. **`GetNextDirectoryLineHotPath`**:
    - Musí správně přeskočit prefix `sftp://user@host[:port]/` jako jeden celek (kořen) a následně rozdělovat cestu podle lomítek `/` i `\\`. Nesmí přeskakovat fixní počet znaků, aby nedošlo k poškození uživatelského jména (např. oříznutí `root` na `oot`).
 

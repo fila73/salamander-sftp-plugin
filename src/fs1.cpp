@@ -106,6 +106,7 @@ int HistoryCount = 0;
 // password visibility state (eye button)
 static bool g_PwdShown = false;
 static HFONT g_EyeFont = NULL;
+static int g_SelectedProfileIndex = -1;
 
 // fill saved connections list
 // is the given folder already in the folder list?
@@ -206,6 +207,7 @@ static void GetSelFolder(HWND HWindow, char* out, int outSize)
 // load profile into dialog fields
 static void LoadProfileToFields(HWND HWindow, const CSftpSavedProfile& p)
 {
+    lstrcpyn(SftpProfile.Name, p.Name, sizeof(SftpProfile.Name));
     char portStr[16];
     SetDlgItemText(HWindow, IDC_HOST, p.Host);
     _snprintf_s(portStr, _TRUNCATE, "%d", p.Port > 0 ? p.Port : 22);
@@ -461,6 +463,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             for (int i = 0; i < SftpProfileCount; i++)
                 if (strcmp(SftpProfiles[i].Name, SftpDefaultSession) == 0)
                 {
+                    g_SelectedProfileIndex = i;
                     LoadProfileToFields(HWindow, SftpProfiles[i]);
                     SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_SETCURSEL, i, 0);
                     break;
@@ -570,8 +573,6 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-static int g_SelectedProfileIndex = -1;
-
         case IDC_SESSIONS:
         {
             int sel = GetSelProfile(HWindow);
@@ -593,6 +594,7 @@ static int g_SelectedProfileIndex = -1;
         {
             // new connection: clear fields and switch to Connection page
             g_SelectedProfileIndex = -1;
+            SftpProfile.Name[0] = 0;
             SetDlgItemText(HWindow, IDC_HOST, "");
             SetDlgItemText(HWindow, IDC_PORT, "22");
             SetDlgItemText(HWindow, IDC_USER, "");
@@ -806,6 +808,28 @@ static int g_SelectedProfileIndex = -1;
             if (SftpProfile.Port <= 0)
                 SftpProfile.Port = 22;
             GetDlgItemText(HWindow, IDC_USER, SftpProfile.User, sizeof(SftpProfile.User));
+            if (g_SelectedProfileIndex >= 0 && g_SelectedProfileIndex < SftpProfileCount &&
+                _stricmp(SftpProfile.Host, SftpProfiles[g_SelectedProfileIndex].Host) == 0)
+            {
+                lstrcpyn(SftpProfile.Name, SftpProfiles[g_SelectedProfileIndex].Name, sizeof(SftpProfile.Name));
+            }
+            else
+            {
+                int matched = -1;
+                for (int i = 0; i < SftpProfileCount; i++)
+                {
+                    if (_stricmp(SftpProfile.Host, SftpProfiles[i].Host) == 0 &&
+                        (SftpProfile.User[0] == 0 || _stricmp(SftpProfile.User, SftpProfiles[i].User) == 0))
+                    {
+                        matched = i;
+                        break;
+                    }
+                }
+                if (matched >= 0)
+                    lstrcpyn(SftpProfile.Name, SftpProfiles[matched].Name, sizeof(SftpProfile.Name));
+                else
+                    SftpProfile.Name[0] = 0;
+            }
             GetDlgItemText(HWindow, IDC_PASSWORD, SftpProfile.Password, sizeof(SftpProfile.Password));
             GetDlgItemText(HWindow, IDC_KEYFILE, SftpProfile.KeyFile, sizeof(SftpProfile.KeyFile));
             GetDlgItemText(HWindow, IDC_PATH, SftpProfile.Path, sizeof(SftpProfile.Path));

@@ -580,6 +580,16 @@ static void SftpParseHostInto(const char* userPart)
             lstrcpyn(SftpProfile.User, user, sizeof(SftpProfile.User));
         SftpProfile.Port = (port > 0) ? port : 22;
         SftpProfile.Valid = true;
+        SftpProfile.Name[0] = 0;
+        for (int i = 0; i < SftpProfileCount; i++)
+        {
+            if (_stricmp(SftpProfile.Host, SftpProfiles[i].Host) == 0 &&
+                (SftpProfile.User[0] == 0 || _stricmp(SftpProfile.User, SftpProfiles[i].User) == 0))
+            {
+                lstrcpyn(SftpProfile.Name, SftpProfiles[i].Name, sizeof(SftpProfile.Name));
+                break;
+            }
+        }
         SftpConn.Disconnect(); // different server -> new connection
     }
 }
@@ -1137,30 +1147,33 @@ CPluginFSInterface::GetPathForMainWindowTitle(const char* fsName, int mode, char
     if (buf == NULL || bufSize <= 0)
         return FALSE;
 
+    const char* connName = SftpProfile.Name[0] != 0 ? SftpProfile.Name : SftpProfile.Host;
+
     if (mode == 1) // "Directory Name Only"
     {
-        // Path is e.g. "/mnt/Enko/nas/Serialy/South Park/Season 29" or "/"
-        if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
+        char dirName[MAX_PATH] = "/";
+        if (Path[0] != 0 && !(Path[0] == '/' && Path[1] == 0) && !(Path[0] == '\\' && Path[1] == 0))
         {
-            lstrcpyn(buf, "/", bufSize);
-            return TRUE;
+            const char* p = Path + strlen(Path);
+            while (p > Path && (*(p - 1) == '/' || *(p - 1) == '\\'))
+                p--;
+            const char* end = p;
+            while (p > Path && *(p - 1) != '/' && *(p - 1) != '\\')
+                p--;
+            int len = (int)(end - p);
+            if (len > 0)
+            {
+                if (len >= MAX_PATH)
+                    len = MAX_PATH - 1;
+                memcpy(dirName, p, len);
+                dirName[len] = 0;
+            }
         }
-        const char* p = Path + strlen(Path);
-        while (p > Path && (*(p - 1) == '/' || *(p - 1) == '\\'))
-            p--;
-        const char* end = p;
-        while (p > Path && *(p - 1) != '/' && *(p - 1) != '\\')
-            p--;
-        int len = (int)(end - p);
-        if (len <= 0)
-        {
-            lstrcpyn(buf, "/", bufSize);
-            return TRUE;
-        }
-        if (len >= bufSize)
-            len = bufSize - 1;
-        memcpy(buf, p, len);
-        buf[len] = 0;
+
+        if (connName[0] != 0)
+            _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s", connName, dirName);
+        else
+            lstrcpyn(buf, dirName, bufSize);
         return TRUE;
     }
     else if (mode == 2) // "Shortened Path"
@@ -1169,7 +1182,10 @@ CPluginFSInterface::GetPathForMainWindowTitle(const char* fsName, int mode, char
         SftpHostPrefix(prefix, sizeof(prefix));
         if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
         {
-            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/", fsName, prefix);
+            if (connName[0] != 0)
+                _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s:%s/", connName, fsName, prefix);
+            else
+                _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/", fsName, prefix);
             return TRUE;
         }
         const char* p = Path + strlen(Path);
@@ -1181,11 +1197,17 @@ CPluginFSInterface::GetPathForMainWindowTitle(const char* fsName, int mode, char
         // if root or only one level deep, return full path
         if (p <= Path + 1)
         {
-            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s%s", fsName, prefix, Path);
+            if (connName[0] != 0)
+                _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s:%s%s", connName, fsName, prefix, Path);
+            else
+                _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s%s", fsName, prefix, Path);
             return TRUE;
         }
         int len = (int)(end - p);
-        _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/.../%.*s", fsName, prefix, len, p);
+        if (connName[0] != 0)
+            _snprintf_s(buf, bufSize, _TRUNCATE, "[%s] %s:%s/.../%.*s", connName, fsName, prefix, len, p);
+        else
+            _snprintf_s(buf, bufSize, _TRUNCATE, "%s:%s/.../%.*s", fsName, prefix, len, p);
         return TRUE;
     }
 

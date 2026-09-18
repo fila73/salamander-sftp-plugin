@@ -9,6 +9,7 @@ extern CSftpConnection SftpConn; // single global connection
 // Connection profile specified in dialog.
 struct CSftpProfile
 {
+    char Name[128];      // connection profile name (e.g. "NAS"), empty if ad-hoc
     char Host[256];
     int Port;
     char User[128];

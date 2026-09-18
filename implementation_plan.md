@@ -28,8 +28,8 @@ Tento plán řeší dva klíčové nedostatky v pluginu SFTP pro Open Salamander
    - Implementováno korektní přeskočení prefixu `sftp://user@host[:port]/`.
    - Zohledněna lomítka `/` (POSIX styl SFTP) pro rozpad cesty na jednotlivé klikatelné segmenty adresního řádku.
 2. **Implementace `GetPathForMainWindowTitle()`**:
-   - `mode == 1` (**Directory Name Only** – výchozí režim pro taby): vrací čistý název aktuální složky (např. `Season 29`, nebo `/` pro root).
-   - `mode == 2` (**Shortened Path**): vrací zkrácenou cestu s vypuštěnými středovými složkami (např. `sftp://root@10.0.1.35/.../Season 29`).
+   - `mode == 1` (**Directory Name Only** – výchozí režim pro taby): vrací formát `[Jméno_konexe] Složka` (např. `[NAS] Season 29`, nebo `[NAS] /` pro root) podle uloženého profilu. Umožňuje okamžitě na první pohled rozlišit různé servery (test, stage, prod).
+   - `mode == 2` (**Shortened Path**): vrací zkrácenou cestu s prefixem profilu (např. `[NAS] sftp://root@10.0.1.35/.../Season 29`).
    - Vrací `TRUE`, čímž Salamander převezme přesný a čistý formát titulku tabu i okna.
 3. **Oprava mezipaměti prohlížeče v `ViewFile()`**:
    - Namísto dosavadního `sftp:` + `Path` + `file.Name` (kde zcela chyběl hostitel i uživatel) je klíč cache sestaven pomocí `GetFullName(file, 0, ...)` (zahrnuje `//user@host:port/path/file`).
