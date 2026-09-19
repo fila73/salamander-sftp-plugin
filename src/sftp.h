@@ -493,7 +493,9 @@ protected:
 // dedicated progress dialog for file transfers (upload/download) with Dark Mode support
 //
 
-class CSftpTransferProgressDlg : public CCommonDialog
+class CPluginFSInterface;
+
+class CSftpTransferProgressDlg : public CCommonDialog, public ISftpTransferDlgObserver
 {
 protected:
     CGUIProgressBarAbstract* FileProgressBar;
@@ -523,6 +525,7 @@ protected:
     int TotalFilesCount;
 
     CSftpTransferWorker* Worker;
+    CPluginFSInterface* FS;
     BOOL IsBackground;
     char NotifyTargetPath[MAX_PATH * 2];
     char NotifySourcePath[MAX_PATH * 2];
@@ -530,6 +533,7 @@ protected:
 
 public:
     CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
+    virtual ~CSftpTransferProgressDlg();
 
     void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes);
     void SetNotifyPaths(const char* targetPath, const char* sourcePath, BOOL isMove);
@@ -538,7 +542,9 @@ public:
     void UpdateTotalProgress(int fileIndex, unsigned __int64 totalBytesDone);
     BOOL GetWantCancel();
 
+    void SetFS(CPluginFSInterface* fs) { FS = fs; }
     void AttachWorker(CSftpTransferWorker* worker);
+    virtual void DetachWorker() override;
     void UpdateFromWorker();
     BOOL GetIsBackground() const { return IsBackground; }
 

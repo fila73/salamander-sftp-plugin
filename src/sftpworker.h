@@ -83,6 +83,14 @@ struct CSftpTransferState
     }
 };
 
+// Observer interface for detached dialog notification
+class ISftpTransferDlgObserver
+{
+public:
+    virtual ~ISftpTransferDlgObserver() {}
+    virtual void DetachWorker() = 0;
+};
+
 // Background worker thread managing dedicated CSftpConnection
 class CSftpTransferWorker
 {
@@ -102,6 +110,7 @@ public:
     bool IsRunning() const;
     bool HasTasks() const;
     void SetDlgHwnd(HWND hwnd) { DlgHwnd = hwnd; }
+    void SetObserver(ISftpTransferDlgObserver* obs) { AttachedObserver = obs; }
 
     // Take a thread-safe snapshot of the current state
     void GetStateSnapshot(CSftpTransferState& outState);
@@ -132,6 +141,8 @@ private:
     CSftpConnection WorkerConn;
     CSftpProfile Profile;
     CSftpTransferState State;
+    ISftpTransferDlgObserver* AttachedObserver;
+    bool Initialized;
 
     // Overwrite decision handling in worker
     int OverwriteAllDecision; // -1 = ask, 0 = skip, 1 = overwrite all, 2 = resume all

@@ -19,3 +19,6 @@ Release/
 .idea/
 .vscode/
 *.zip
+*.map
+*.log
+*.TXT

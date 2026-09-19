@@ -204,3 +204,14 @@ Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolov
 - Salamander při volání `ChangePanelPathToPluginFS` s prázdnou cestou (např. po stisku Login v Connect dialogu) předává do `ChangePath` parametr `userPart = NULL`.
 - Všechny metody FS musí striktně ověřovat `if (userPart == NULL) userPart = "";` před jakoukoli dereferencí řetězce nebo předáním do stringových a path-helper funkcí (`SftpStripHost`, `SftpIsSamePath`, `SftpIsRoot`, `SftpJoin`, `SftpParent`).
 - `SftpStripHost` při `NULL` vždy vrací prázdný řetězec `""` a nikdy `NULL`.
+
+### 5. Správa životního cyklu nemodálních dialogů a Observer pattern (`ISftpTransferDlgObserver`):
+- Nemodální dialogy jako `CSftpTransferProgressDlg` využívají Windows časovač (`WM_TIMER` 101, 100 ms) pro periodický dotaz na snapshot stavu workeru (`GetStateSnapshot`).
+- Pokud uživatel zavře nebo opustí SFTP panel, instance `CPluginFSInterface` je zničena včetně členské proměnné `CSftpTransferWorker TransferWorker`, která v destruktoru volá `DeleteCriticalSection`.
+- **Riziko pádu (Use-After-Free / `0x24` Access Violation)**: Pokud by dialog přežil zničení FS/workeru, při dalším ticku timeru by zavolal `EnterCriticalSection` na smazanou kritickou sekci, což v `ntdll.dll!RtlEnterCriticalSection` způsobí `access violation write on 0x0000000000000024` (dereference vynulovaného `DebugInfo`).
+- **Architektonické řešení**:
+  1. Zavedeno rozhraní `ISftpTransferDlgObserver` s čistě virtuální metodou `virtual void DetachWorker() = 0;`.
+  2. Dialog toto rozhraní implementuje a v `DetachWorker()` okamžitě zabíjí časovač (`KillTimer(HWindow, 101)`) a nuluje ukazatel `Worker = NULL`.
+  3. `CSftpTransferWorker` nese příznak `Initialized` a v metodách `Stop()` a v destruktoru ihned notifikuje pozorovatele `AttachedObserver->DetachWorker()` a nuluje `DlgHwnd`. Metoda `GetStateSnapshot` bezpečně ověřuje `if (!Initialized) return;` ještě před dotykem kritické sekce.
+  4. Destruktor `CPluginFSInterface::~CPluginFSInterface()` bezpečně odpojí a zničí okno dialogu `ActiveTransferDlg`, aby nezůstávaly viset žádné osiřelé časovače ani okna.
+

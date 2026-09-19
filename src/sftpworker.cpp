@@ -7,7 +7,7 @@
 
 CSftpTransferWorker::CSftpTransferWorker()
     : ThreadHandle(NULL), ThreadId(0), WakeEvent(NULL), StopEvent(NULL),
-      DlgHwnd(NULL), OverwriteAllDecision(-1)
+      DlgHwnd(NULL), OverwriteAllDecision(-1), AttachedObserver(NULL), Initialized(true)
 {
     InitializeCriticalSection(&QueueLock);
     State.Init();
@@ -19,6 +19,13 @@ CSftpTransferWorker::CSftpTransferWorker()
 CSftpTransferWorker::~CSftpTransferWorker()
 {
     Stop();
+    Initialized = false;
+    if (AttachedObserver != NULL)
+    {
+        AttachedObserver->DetachWorker();
+        AttachedObserver = NULL;
+    }
+    DlgHwnd = NULL;
     if (WakeEvent)
     {
         CloseHandle(WakeEvent);
@@ -67,12 +74,22 @@ bool CSftpTransferWorker::Start(const CSftpProfile& profile, HWND dlgHwnd)
 
 void CSftpTransferWorker::Stop()
 {
+    if (AttachedObserver != NULL)
+    {
+        AttachedObserver->DetachWorker();
+        AttachedObserver = NULL;
+    }
+    DlgHwnd = NULL;
+
     if (!ThreadHandle)
         return;
 
-    EnterCriticalSection(&State.Lock);
-    State.Cancelled = true;
-    LeaveCriticalSection(&State.Lock);
+    if (Initialized)
+    {
+        EnterCriticalSection(&State.Lock);
+        State.Cancelled = true;
+        LeaveCriticalSection(&State.Lock);
+    }
 
     SetEvent(StopEvent);
     SetEvent(WakeEvent);
@@ -88,13 +105,18 @@ void CSftpTransferWorker::Stop()
 
     WorkerConn.Disconnect();
 
-    EnterCriticalSection(&State.Lock);
-    State.IsRunning = false;
-    LeaveCriticalSection(&State.Lock);
+    if (Initialized)
+    {
+        EnterCriticalSection(&State.Lock);
+        State.IsRunning = false;
+        LeaveCriticalSection(&State.Lock);
+    }
 }
 
 void CSftpTransferWorker::EnqueueTask(const CSftpTransferTask& task)
 {
+    if (!Initialized)
+        return;
     EnterCriticalSection(&QueueLock);
     TaskQueue.push_back(task);
     EnterCriticalSection(&State.Lock);
@@ -108,6 +130,8 @@ void CSftpTransferWorker::EnqueueTask(const CSftpTransferTask& task)
 
 void CSftpTransferWorker::Cancel()
 {
+    if (!Initialized)
+        return;
     EnterCriticalSection(&State.Lock);
     State.Cancelled = true;
     LeaveCriticalSection(&State.Lock);
@@ -116,6 +140,8 @@ void CSftpTransferWorker::Cancel()
 
 bool CSftpTransferWorker::IsRunning() const
 {
+    if (!Initialized)
+        return false;
     EnterCriticalSection(const_cast<LPCRITICAL_SECTION>(&State.Lock));
     bool running = State.IsRunning;
     LeaveCriticalSection(const_cast<LPCRITICAL_SECTION>(&State.Lock));
@@ -124,6 +150,8 @@ bool CSftpTransferWorker::IsRunning() const
 
 bool CSftpTransferWorker::HasTasks() const
 {
+    if (!Initialized)
+        return false;
     EnterCriticalSection(const_cast<LPCRITICAL_SECTION>(&QueueLock));
     bool empty = TaskQueue.empty();
     LeaveCriticalSection(const_cast<LPCRITICAL_SECTION>(&QueueLock));
@@ -132,6 +160,8 @@ bool CSftpTransferWorker::HasTasks() const
 
 void CSftpTransferWorker::GetStateSnapshot(CSftpTransferState& outState)
 {
+    if (!Initialized)
+        return;
     EnterCriticalSection(&State.Lock);
     memcpy(&outState.CurrentLocalFile, State.CurrentLocalFile, sizeof(State.CurrentLocalFile));
     memcpy(&outState.CurrentRemoteFile, State.CurrentRemoteFile, sizeof(State.CurrentRemoteFile));

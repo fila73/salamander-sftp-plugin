@@ -389,10 +389,35 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     TotalFilesCount = 1;
 
     Worker = NULL;
+    FS = NULL;
     IsBackground = FALSE;
     NotifyTargetPath[0] = 0;
     NotifySourcePath[0] = 0;
     NotifyIsMove = FALSE;
+}
+
+CSftpTransferProgressDlg::~CSftpTransferProgressDlg()
+{
+    DetachWorker();
+    if (FS != NULL && FS->ActiveTransferDlg == this)
+    {
+        FS->ActiveTransferDlg = NULL;
+    }
+    FS = NULL;
+}
+
+void CSftpTransferProgressDlg::DetachWorker()
+{
+    if (HWindow != NULL && IsWindow(HWindow))
+    {
+        KillTimer(HWindow, 101);
+    }
+    if (Worker != NULL)
+    {
+        Worker->SetDlgHwnd(NULL);
+        Worker->SetObserver(NULL);
+        Worker = NULL;
+    }
 }
 
 static bool SftpIsPathRemote(const char* p)
@@ -585,9 +610,13 @@ void CSftpTransferProgressDlg::UpdateTotalProgress(int fileIndex, unsigned __int
 void CSftpTransferProgressDlg::AttachWorker(CSftpTransferWorker* worker)
 {
     Worker = worker;
-    if (Worker != NULL && HWindow != NULL)
+    if (Worker != NULL)
     {
-        Worker->SetDlgHwnd(HWindow);
+        Worker->SetObserver(this);
+        if (HWindow != NULL)
+        {
+            Worker->SetDlgHwnd(HWindow);
+        }
     }
 }
 
@@ -765,7 +794,10 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         }
         SetTimer(HWindow, 101, 100, NULL);
         if (Worker != NULL)
+        {
+            Worker->SetObserver(this);
             Worker->SetDlgHwnd(HWindow);
+        }
         break;
     }
 
@@ -776,7 +808,10 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
             if (Worker != NULL)
                 UpdateFromWorker();
             else
+            {
+                KillTimer(HWindow, 101);
                 FlushDataToControls();
+            }
         }
         return 0;
     }
@@ -785,7 +820,18 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
     {
         KillTimer(HWindow, 101);
         if (Worker != NULL)
+        {
             Worker->SetDlgHwnd(NULL);
+            Worker->SetObserver(NULL);
+            Worker = NULL;
+        }
+        FileProgressBar = NULL;
+        TotalProgressBar = NULL;
+        if (FS != NULL && FS->ActiveTransferDlg == this)
+        {
+            FS->ActiveTransferDlg = NULL;
+        }
+        FS = NULL;
         break;
     }
 
@@ -797,6 +843,7 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
 
     case WM_APP_SFTP_WORKER_FINISHED:
     {
+        KillTimer(HWindow, 101);
         if (Worker != NULL)
         {
             CSftpTransferState snap;
@@ -807,6 +854,13 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
                     ShowWindow(HWindow, SW_SHOW);
                 SalamanderGeneral->SalMessageBox(HWindow, snap.ErrorMsg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
             }
+            Worker->SetDlgHwnd(NULL);
+            Worker->SetObserver(NULL);
+            Worker = NULL;
+        }
+        if (FS != NULL && FS->ActiveTransferDlg == this)
+        {
+            FS->ActiveTransferDlg = NULL;
         }
         if (NotifyTargetPath[0] != 0)
             SalamanderGeneral->PostChangeOnPathNotification(NotifyTargetPath, TRUE);
@@ -1100,6 +1154,16 @@ CPluginFSInterface::CPluginFSInterface()
 
 CPluginFSInterface::~CPluginFSInterface()
 {
+    if (ActiveTransferDlg != NULL)
+    {
+        ActiveTransferDlg->DetachWorker();
+        ActiveTransferDlg->SetFS(NULL);
+        if (IsWindow(ActiveTransferDlg->HWindow))
+        {
+            DestroyWindow(ActiveTransferDlg->HWindow);
+        }
+        ActiveTransferDlg = NULL;
+    }
     TransferWorker.Stop();
     Conn.Disconnect();
 }
@@ -3046,6 +3110,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
             break;
     }
 
+    dlg->SetFS(this);
     dlg->AttachWorker(&TransferWorker);
     ActiveTransferDlg = dlg;
     TransferWorker.Start(Profile, dlg->HWindow);
@@ -3147,6 +3212,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
         TransferWorker.EnqueueTask(task);
     }
 
+    dlg->SetFS(this);
     dlg->AttachWorker(&TransferWorker);
     ActiveTransferDlg = dlg;
     TransferWorker.Start(Profile, dlg->HWindow);

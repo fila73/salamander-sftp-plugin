@@ -441,3 +441,19 @@ graph TD
   3. Pomocné funkce `SftpIsSamePath`, `SftpIsRoot`, `SftpJoin` a `SftpParent` doplněny o plnou null-safety.
   4. Doplněny jednotkové testy v `test/test_path_hottrack.cpp`.
   5. Nasazena nová binárka `sftp.spl` do `C:\Apps\samandarin\plugins\sftp\`.
+
+### Hotfix: STATUS_HEAP_CORRUPTION (0xc0000374) a duplicitní načtení OpenSSL 3
+- **Příznak**: Pád aplikace s kódem `0xc0000374` během SSH KEXINIT odesílání paketu.
+- **Příčina**: Zastaralá funkce `LoadBundledLibssh2()` načítala `plugins\sftp\libcrypto-3-x64.dll` s `LOAD_WITH_ALTERED_SEARCH_PATH`, což do procesu zavedlo druhý OpenSSL 3 runtime kolidující s jádrem Salamandera.
+- **Řešení**: Odstraněna `LoadBundledLibssh2()`, redundantní DLL přesunuty do zálohy, přidán heap validation trace log (`SftpTraceLog`), ověřeno integračním testem `test/test_heap_check.cpp`.
+
+### Hotfix: Use-After-Free a 0x24 Access Violation v `RtlEnterCriticalSection`
+- **Příznak**: Crash log `50B4C3A8C1E0EAB4-AS50SAM0.15.1X64-260919-190120.TXT` s `access violation write on 0x0000000000000024` v `ntdll.dll!RtlEnterCriticalSection` volané z `CSftpTransferWorker::GetStateSnapshot` přes `CSftpTransferProgressDlg::UpdateFromWorker` při `WM_TIMER` 101.
+- **Příčina**: Při zavření/opuštění SFTP panelu došlo k destrukci `CPluginFSInterface` a `CSftpTransferWorker`, která uvolnila kritickou sekci `DeleteCriticalSection(&State.Lock)`. Nemodální dialog s aktivním 100ms časovačem zůstal otevřený a následný tick timeru přistoupil ke zničené kritické sekci.
+- **Řešení**:
+  1. Zavedeno rozhraní `ISftpTransferDlgObserver` s metodou `DetachWorker()`.
+  2. Dialog `CSftpTransferProgressDlg` implementuje `DetachWorker()`, kde okamžitě zabíjí timer `KillTimer(HWindow, 101)` a nuluje `Worker`.
+  3. `CSftpTransferWorker` v `Stop()` a v destruktoru volá `AttachedObserver->DetachWorker()` a nastavuje `Initialized = false`.
+  4. `GetStateSnapshot()` ověřuje `if (!Initialized) return;` před voláním `EnterCriticalSection`.
+  5. V destruktoru `CPluginFSInterface` se dialog bezpečně odpojí, okno se zničí a vyčistí se `ActiveTransferDlg`.
+
