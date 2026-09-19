@@ -55,3 +55,8 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Podpora automatického obnovení otevřených SFTP panelů/tabů po restartu aplikace Salamander (implementace `SavePathForMainWindowTitle` a obnovení relace ze serializované cesty `sftp://user@host:port/path`).
 - **Přínos**: Zachování rozpracovaného stavu a otevřených složek po ukončení a novém spuštění správce souborů.
 
+### 14. Opuštění panelu, dotaz na odpojení a Detached FS (`TryCloseOrDetach`) [HOTOVO – v1.3.0]
+- **Popis**: Implementace metody `TryCloseOrDetach` a `GetChangeDriveOrDisconnectItem` podle vzoru vestavěného FTP pluginu Salamandera.
+- **Stav**: Kompletně dokončeno. Při opuštění SFTP panelu (`FSTRYCLOSE_CHANGEPATH`) se uživatele plugin zeptá přes `SalMessageBoxEx` na **Odpojit** / **Ponechat** / **Storno**. Při volbě Ponechat přejde FS do režimu Detached FS (`detach = TRUE`), běží dál na pozadí včetně keepalive a lze se k němu vrátit z `Alt+F1`/`Alt+F2` se zobrazeným jménem profilu `[NAS]`. Volbu lze trvale uložit v registru (`LeavePanelAction`).
+
+

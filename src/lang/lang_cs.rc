@@ -186,4 +186,4 @@ BEGIN
     PUSHBUTTON      "Storno",IDCANCEL,185,115,50,14,WS_GROUP
 END
 
-#include "lang.rc2"
+#include "lang_cs.rc2"

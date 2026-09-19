@@ -215,3 +215,21 @@ Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolov
   3. `CSftpTransferWorker` nese příznak `Initialized` a v metodách `Stop()` a v destruktoru ihned notifikuje pozorovatele `AttachedObserver->DetachWorker()` a nuluje `DlgHwnd`. Metoda `GetStateSnapshot` bezpečně ověřuje `if (!Initialized) return;` ještě před dotykem kritické sekce.
   4. Destruktor `CPluginFSInterface::~CPluginFSInterface()` bezpečně odpojí a zničí okno dialogu `ActiveTransferDlg`, aby nezůstávaly viset žádné osiřelé časovače ani okna.
 
+### 6. Opuštění panelu, dotaz na odpojení (`TryCloseOrDetach`) a Detached FS:
+- Podle vzoru oficiálního FTP pluginu Salamandera implementuje virtuální FS metodu `TryCloseOrDetach`:
+  ```cpp
+  virtual BOOL WINAPI TryCloseOrDetach(BOOL forceClose, BOOL canDetach, BOOL& detach, int reason);
+  ```
+- **Obsluha `FSTRYCLOSE_CHANGEPATH`**:
+  - Pokud uživatel opouští panel (změna disku, navigace pryč), dialog `SalMessageBoxEx` nabídne:
+    - **Odpojit** (`DIALOG_YES`): `detach = FALSE; return TRUE;` -> spojení se korektně uzavře a FS se zruší.
+    - **Ponechat** (`DIALOG_NO`): `detach = TRUE; return TRUE;` -> spojení přejde do režimu Detached FS. Zůstává živé v paměti Salamandera a uživatel se k němu může kdykoliv vrátit z nabídky Změna disku (`Alt+F1`/`Alt+F2`) nebo nástrojové lišty disků.
+    - **Storno** (`IDCANCEL`): `return FALSE;` -> změna cesty je zrušena a panel zůstává v SFTP.
+- **Pojmenování odpojených relací v `GetChangeDriveOrDisconnectItem`**:
+  - Do nabídky Změna disku se vkládá řetězec `\tSFTP:[Název_Profilu] /vzdálena/cesta\t` se jménem aktivního profilu, což uživateli umožňuje snadnou orientaci mezi více odpojenými servery.
+- **Perzistence volby v registru (`LeavePanelAction`)**:
+  - `0` = Ptát se (výchozí chování).
+  - `1` = Vždy odpojit.
+  - `2` = Vždy ponechat na pozadí (Detached FS).
+
+

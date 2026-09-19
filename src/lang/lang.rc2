@@ -53,4 +53,10 @@ STRINGTABLE
  IDS_TBTT_FILTER,            "Filter\tCtrl+U"
  IDS_FILTER,                 "Filter"
  IDS_MENU_EXECUTE,           "&Execute"
+
+ IDS_CLOSECONINPANEL,        "You are leaving SFTP server in panel. Do you wish to disconnect or to keep connection to this server?\n\nIf you choose Keep, you can access this connection from the Change Drive menu later."
+ IDS_DISCONNECTBUTTON,       "&Disconnect"
+ IDS_KEEPCONBUTTON,          "&Keep"
+ IDS_ALWAYSREMEMBER,         "&Remember this choice and do not ask again"
+ IDS_WANTDISCONNECT,         "Do you want to disconnect from SFTP server?"
 }

@@ -60,6 +60,9 @@ const char* CONFIG_ACCESSEDFIXEDWIDTH = "AccessedFixedWidth";
 const char* CONFIG_ACCESSEDWIDTH = "AccessedWidth";
 const char* CONFIG_DFSTYPEFIXEDWIDTH = "DFSTypeFixedWidth";
 const char* CONFIG_DFSTYPEWIDTH = "DFSTypeWidth";
+const char* CONFIG_LEAVEPANELACTION = "LeavePanelAction";
+
+int SftpLeavePanelAction = 0; // 0 = ask, 1 = always disconnect, 2 = always keep
 
 // ConfigVersion: 0 - no configuration was loaded from the registry (fresh plugin installation),
 //                1 - first configuration version
@@ -699,6 +702,7 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
         registry->GetValue(regKey, CONFIG_ACCESSEDWIDTH, REG_DWORD, &AccessedWidth, sizeof(DWORD));
         registry->GetValue(regKey, CONFIG_DFSTYPEFIXEDWIDTH, REG_DWORD, &DFSTypeFixedWidth, sizeof(DWORD));
         registry->GetValue(regKey, CONFIG_DFSTYPEWIDTH, REG_DWORD, &DFSTypeWidth, sizeof(DWORD));
+        registry->GetValue(regKey, CONFIG_LEAVEPANELACTION, REG_DWORD, &SftpLeavePanelAction, sizeof(DWORD));
 
         // load saved servers (profiles)
         HKEY serversKey;
@@ -790,6 +794,7 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
     registry->SetValue(regKey, CONFIG_ACCESSEDWIDTH, REG_DWORD, &AccessedWidth, sizeof(DWORD));
     registry->SetValue(regKey, CONFIG_DFSTYPEFIXEDWIDTH, REG_DWORD, &DFSTypeFixedWidth, sizeof(DWORD));
     registry->SetValue(regKey, CONFIG_DFSTYPEWIDTH, REG_DWORD, &DFSTypeWidth, sizeof(DWORD));
+    registry->SetValue(regKey, CONFIG_LEAVEPANELACTION, REG_DWORD, &SftpLeavePanelAction, sizeof(DWORD));
 
     // save saved servers (profiles)
     HKEY serversKey;

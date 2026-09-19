@@ -1,0 +1,59 @@
+//****************************************************************************
+//
+// Copyright (c) 2023 Open Salamander Authors
+//
+// This is a part of the Open Salamander SDK library.
+//
+//****************************************************************************
+
+//
+// lang_cs.rc2 - české textové zdroje pro czech.slg
+//
+
+#ifdef APSTUDIO_INVOKED
+#error this file is not editable by Microsoft Visual C++
+#endif //APSTUDIO_INVOKED
+
+#include "../versinfo.rh2"
+#include "versinfo.rc2"
+
+STRINGTABLE
+{
+ IDS_PLUGINNAME,             "SFTP"
+ IDS_ABOUT,                  "O pluginu SFTP"
+ IDS_PLUGIN_DESCRIPTION,     "SFTP klient (SSH File Transfer Protocol) postavený na libssh2."
+ IDS_PLUGIN_HOME,            "https://github.com/Dupl3xx/salamander-sftp-plugin"
+ IDS_PLUGIN_BUGREP,          "V pluginu Sftp došlo k výjimce, informujte prosím autory!\nPokud jste pracovali se souborem .dop, zašlete nám jej.\nDěkujeme!"
+ IDS_PLUGIN_EMAIL,           "petr.solin@altap.cz"
+ IDS_CFG_ALREADY_OPENED,     "Konfigurace je již otevřena."
+ IDS_VIEWER_OPENWNDS,        "Některá okna prohlížeče SFTP jsou otevřena. Chcete je zavřít?"
+ IDS_CFG_TITLE,              "Konfigurace SFTP"
+ IDS_INVALID_NUM,            "Neplatné číslo!"
+ IDS_DOP_FILES_FILTER,       "Soubory Sftp (*.dop)|*.dop|Všechny soubory (*.*)|*.*|"
+ 
+ IDS_MENU_FILES,             "&Soubory"
+ IDS_MENU_FILES_OPEN,        "&Otevřít\tCtrl+O"
+ IDS_MENU_FILES_EXIT,        "&Konec"
+ IDS_MENU_EDIT,              "Ú&pravy"
+ IDS_MENU_EDIT_CUT,          "Vyj&mout\tCtrl+X"
+ IDS_MENU_EDIT_COPY,         "&Kopírovat\tCtrl+C"
+ IDS_MENU_EDIT_PASTE,        "V&ložit\tCtrl+V"
+ IDS_MENU_VIEW,              "&Zobrazit"
+ IDS_MENU_FILTER,            "&Filtr"
+ IDS_MENU_OPTIONS,           "M&ožnosti"
+ IDS_MENU_OPTIONS_CFG,       "&Konfigurace..."
+ IDS_MENU_HELP,              "&Nápověda"
+ IDS_MENU_HELP_ABOUT,        "O &aplikaci"
+ IDS_TBTT_CUT,               "Vyjmout\tCtrl+X"
+ IDS_TBTT_COPY,              "Kopírovat\tCtrl+C"
+ IDS_TBTT_PASTE,             "Vložit\tCtrl+V"
+ IDS_TBTT_FILTER,            "Filtr\tCtrl+U"
+ IDS_FILTER,                 "Filtr"
+ IDS_MENU_EXECUTE,           "&Spustit"
+
+ IDS_CLOSECONINPANEL,        "Opouštíte SFTP server v panelu. Přejete si odpojit spojení nebo jej ponechat aktivní?\n\nZvolíte-li Ponechat, spojení zůstane na pozadí a můžete se k němu kdykoliv vrátit z nabídky Změna disku (Alt+F1/Alt+F2)."
+ IDS_DISCONNECTBUTTON,       "&Odpojit"
+ IDS_KEEPCONBUTTON,          "&Ponechat"
+ IDS_ALWAYSREMEMBER,         "&Zapamatovat tuto volbu a příště se již neptat"
+ IDS_WANTDISCONNECT,         "Opravdu se chcete odpojit od SFTP serveru?"
+}

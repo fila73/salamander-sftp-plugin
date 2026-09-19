@@ -44,6 +44,9 @@ void ReleaseFS();
 extern char AssignedFSName[MAX_PATH];
 extern int AssignedFSNameLen;
 
+// leave panel action: 0 = ask, 1 = always disconnect, 2 = always keep (detach)
+extern int SftpLeavePanelAction;
+
 // invoked for the first instance of SFTP: optional cleanup of its own temp directory
 // with file copies extracted from archives by previous SFTP instances
 void ClearTEMPIfNeeded(HWND parent);

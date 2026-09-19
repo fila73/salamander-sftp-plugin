@@ -1647,13 +1647,94 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
 BOOL WINAPI
 CPluginFSInterface::TryCloseOrDetach(BOOL forceClose, BOOL canDetach, BOOL& detach, int reason)
 {
-    if (CalledFromDisconnectDialog)
+    detach = FALSE;
+
+    if (CalledFromDisconnectDialog || forceClose ||
+        reason == FSTRYCLOSE_UNLOADCLOSEFS ||
+        reason == FSTRYCLOSE_UNLOADCLOSEDETACHEDFS ||
+        reason == FSTRYCLOSE_PLUGINCLOSEDETACHEDFS ||
+        (SalamanderGeneral != NULL && SalamanderGeneral->IsCriticalShutdown()))
     {
-        detach = FALSE; // we want to close the FS in any case
         return TRUE;
     }
-    // without asking: just close SFTP connection when leaving path (don't detach)
-    detach = FALSE;
+
+    if (reason == FSTRYCLOSE_CHANGEPATH)
+    {
+        if (SftpLeavePanelAction == 1) // Always disconnect
+        {
+            detach = FALSE;
+            return TRUE;
+        }
+        if (SftpLeavePanelAction == 2 && canDetach) // Always keep
+        {
+            detach = TRUE;
+            return TRUE;
+        }
+
+        // SftpLeavePanelAction == 0: Ask user
+        if (canDetach)
+        {
+            MSGBOXEX_PARAMS params;
+            memset(&params, 0, sizeof(params));
+            params.HParent = SalamanderGeneral->GetMsgBoxParent();
+            params.Flags = MSGBOXEX_YESNOCANCEL | MSGBOXEX_ICONQUESTION | MSGBOXEX_SILENT | MSGBOXEX_HINT;
+            params.Caption = LoadStr(IDS_PLUGINNAME);
+            params.Text = LoadStr(IDS_CLOSECONINPANEL);
+
+            int rememberChoice = 0;
+            params.CheckBoxText = LoadStr(IDS_ALWAYSREMEMBER);
+            params.CheckBoxValue = &rememberChoice;
+
+            char buffer[128];
+            sprintf(buffer, "%d\t%s\t%d\t%s", DIALOG_YES, LoadStr(IDS_DISCONNECTBUTTON),
+                    DIALOG_NO, LoadStr(IDS_KEEPCONBUTTON));
+            params.AliasBtnNames = buffer;
+
+            int res = SalamanderGeneral->SalMessageBoxEx(&params);
+            UpdateWindow(SalamanderGeneral->GetMainWindowHWND());
+
+            if (res == IDCANCEL)
+            {
+                return FALSE; // abort changing path, stay in panel
+            }
+
+            if (res == DIALOG_NO) // Keep
+            {
+                detach = TRUE;
+                if (rememberChoice)
+                {
+                    SftpLeavePanelAction = 2; // Always keep
+                    SaveSftpConfigurationImmediately(SalamanderGeneral->GetMsgBoxParent());
+                }
+                return TRUE;
+            }
+
+            // Otherwise DIALOG_YES -> Disconnect
+            detach = FALSE;
+            if (rememberChoice)
+            {
+                SftpLeavePanelAction = 1; // Always disconnect
+                SaveSftpConfigurationImmediately(SalamanderGeneral->GetMsgBoxParent());
+            }
+            return TRUE;
+        }
+        else
+        {
+            // cannot detach: prompt if user wants to disconnect
+            int res = SalamanderGeneral->SalMessageBox(SalamanderGeneral->GetMsgBoxParent(),
+                                                       LoadStr(IDS_WANTDISCONNECT),
+                                                       LoadStr(IDS_PLUGINNAME),
+                                                       MB_YESNO | MB_ICONQUESTION);
+            UpdateWindow(SalamanderGeneral->GetMainWindowHWND());
+            if (res == IDYES)
+            {
+                detach = FALSE;
+                return TRUE;
+            }
+            return FALSE;
+        }
+    }
+
     return TRUE;
 }
 
@@ -1779,7 +1860,11 @@ CPluginFSInterface::GetChangeDriveOrDisconnectItem(const char* fsName, char*& ti
     // the text will be the FS path (in Salamander format)
     txt[0] = '\t';
     strcpy(txt + 1, fsName);
-    sprintf(txt + strlen(txt), ":%s\t", Path);
+    const char* connName = Profile.Name[0] != 0 ? Profile.Name : (Profile.Host[0] != 0 ? Profile.Host : NULL);
+    if (connName != NULL)
+        sprintf(txt + strlen(txt), ":[%s] %s\t", connName, Path);
+    else
+        sprintf(txt + strlen(txt), ":%s\t", Path);
     // double any '&' characters so the path prints correctly
     SalamanderGeneral->DuplicateAmpersands(txt, 2 * MAX_PATH + 102);
     // append information about free space
