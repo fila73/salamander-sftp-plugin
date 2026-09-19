@@ -9,7 +9,7 @@ Tento plán navrhl a realizoval implementaci chování při opuštění SFTP pan
   2. Opraveno nahrávání jazykových modulů z podsložky `plugins\sftp\lang\` a odstraněno hlášení „Error loading string".
   3. Implementován reset čítačů a fronty workeru (`CSftpTransferWorker::Reset()`), aby se hodnoty nepřenášely do dalšího kopírování.
   4. Celkový progress bar nyní přesně odráží objem přenesených dat (MB/kB) namísto pouhého počtu souborů.
-  5. Okno přenosu na pozadí lze kdykoliv vyvolat klávesovou zkratkou **`Ctrl+Shift+T`** nebo z menu Moduly -> SFTP -> Zobrazit přenosy... z libovolného panelu.
+  5. Okno přenosu na pozadí lze kdykoliv vyvolat z menu Moduly -> SFTP -> Zobrazit přenosy... z libovolného panelu (výchozí zkratka byla uvolněna, aby nekolidovala se zkratkou Salamandera pro taby `Ctrl+Shift+T`).
 
 
 

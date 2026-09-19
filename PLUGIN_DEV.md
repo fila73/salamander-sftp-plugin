@@ -198,7 +198,7 @@ Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolov
 ### 3. Nemodální dialog s tokom na pozadí:
 - Dialog `CSftpTransferProgressDlg` běží nemodálně a neblokuje hlavní okno správce souborů.
 - **Tlačítko „Na pozadí" (`IDB_BACKGROUND`)**: Uživatel může dialog kdykoli minimalizovat či skrýt (`SW_HIDE`), přičemž přenos pokračuje plnou rychlostí v pozadí.
-- **Znovuzobrazení dialogu (`Ctrl+Shift+T`)**: V menu pluginu i pod klávesovou zkratkou **`Ctrl+Shift+T`** (`MENUCMD_SHOWTRANSFERS`) lze dialog kdykoliv přenést zpět do popředí. Příkaz je přístupný ze všech panelů (včetně lokálních disků) a prohledává všechny aktivní i odpojené FS relace.
+- **Znovuzobrazení dialogu**: V menu pluginu **Moduly ➔ SFTP ➔ Zobrazit přenosy...** (`MENUCMD_SHOWTRANSFERS`) lze dialog kdykoliv přenést zpět do popředí. Příkaz je přístupný ze všech panelů (včetně lokálních disků) a prohledává všechny aktivní i odpojené FS relace. Výchozí klávesová zkratka byla ponechána volná (hotkey `0`), aby nekolidovala s klávesovou zkratkou Salamandera pro správu tabů (`Ctrl+Shift+T`). Uživatel si ji může volitelně nastavit v konfiguraci Salamandera.
 - **Celkový postup podle objemu dat (MB/kB)**: Celkový progress bar se počítá na základě poměru přenesených bajtů vůči celkovému očekávanému objemu dat (`TotalDoneBytes / TotalExpectedBytes`), nikoli pouhým počtem souborů.
 - **Notifikace změn**: Po dokončení všech úloh ve frontě worker dialog automaticky zavolá `SalamanderGeneral->PostChangeOnPathNotification` pro cíl i zdroj (u operací přesunutí / Move).
 
