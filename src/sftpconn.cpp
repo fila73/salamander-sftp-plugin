@@ -1001,14 +1001,21 @@ bool CSftpConnection::ScpDownload(const char* remotePath, const char* localPath)
     memset(&st, 0, sizeof(st));
     LIBSSH2_CHANNEL* ch = libssh2_scp_recv2(Session, remotePath, &st);
     if (!ch) { SetError("SCP download (open)"); return false; }
+    unsigned __int64 total = (unsigned __int64)st.st_size;
+    unsigned __int64 done = 0;
+
+    if (!ReportProgress(localPath, 0, total))
+    {
+        ErrorMsg = "Cancelled by user.";
+        libssh2_channel_free(ch);
+        return false;
+    }
+
     FILE* f = nullptr;
     fopen_s(&f, localPath, "wb");
     if (!f) { ErrorMsg = "Cannot create local file."; libssh2_channel_free(ch); return false; }
-    unsigned __int64 total = (unsigned __int64)st.st_size;
-    unsigned __int64 done = 0;
     char buf[65536];
     bool ok = true;
-    if (!ReportProgress(localPath, 0, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_channel_free(ch); return false; }
     while (done < total)
     {
         size_t want = (size_t)((total - done) < sizeof(buf) ? (total - done) : sizeof(buf));
@@ -1022,6 +1029,10 @@ bool CSftpConnection::ScpDownload(const char* remotePath, const char* localPath)
     fclose(f);
     libssh2_channel_close(ch);
     libssh2_channel_free(ch);
+    if (!ok && done == 0)
+    {
+        DeleteFileA(localPath);
+    }
     return ok;
 }
 
@@ -1033,13 +1044,20 @@ bool CSftpConnection::ScpUpload(const char* localPath, const char* remotePath)
     _fseeki64(f, 0, SEEK_END);
     unsigned __int64 total = (unsigned __int64)_ftelli64(f);
     _fseeki64(f, 0, SEEK_SET);
+
+    if (!ReportProgress(localPath, 0, total))
+    {
+        ErrorMsg = "Cancelled by user.";
+        fclose(f);
+        return false;
+    }
+
     LIBSSH2_CHANNEL* ch = libssh2_scp_send64(Session, remotePath, 0644, (libssh2_int64_t)total, 0, 0);
     if (!ch) { SetError("SCP upload (open)"); fclose(f); return false; }
     char buf[65536];
     bool ok = true;
     unsigned __int64 done = 0;
     size_t n;
-    if (!ReportProgress(localPath, 0, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_channel_free(ch); return false; }
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
     {
         char* p = buf;
@@ -1281,6 +1299,15 @@ bool CSftpConnection::Download(const char* remotePath, const char* localPath, un
         libssh2_sftp_seek64(h, resumeOffset); // resume from given position
     else
         resumeOffset = 0;
+
+    // Check progress/cancel BEFORE creating or truncating the local file!
+    if (!ReportProgress(localPath, resumeOffset, total))
+    {
+        ErrorMsg = "Cancelled by user.";
+        libssh2_sftp_close(h);
+        return false;
+    }
+
     FILE* f = nullptr;
     fopen_s(&f, localPath, resumeOffset > 0 ? "r+b" : "wb");
     if (!f) { ErrorMsg = "Cannot open local file."; libssh2_sftp_close(h); return false; }
@@ -1288,7 +1315,6 @@ bool CSftpConnection::Download(const char* remotePath, const char* localPath, un
     char buf[65536];
     bool ok = true;
     unsigned __int64 done = resumeOffset;
-    if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_sftp_close(h); return false; }
     for (;;)
     {
         ssize_t n = libssh2_sftp_read(h, buf, sizeof(buf));
@@ -1300,6 +1326,10 @@ bool CSftpConnection::Download(const char* remotePath, const char* localPath, un
     }
     fclose(f);
     libssh2_sftp_close(h);
+    if (!ok && done == 0 && resumeOffset == 0)
+    {
+        DeleteFileA(localPath); // clean up 0-byte file if cancelled before any data was written
+    }
     return ok;
 }
 
@@ -1315,6 +1345,15 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     _fseeki64(f, 0, SEEK_END);
     unsigned __int64 total = (unsigned __int64)_ftelli64(f);
     _fseeki64(f, 0, SEEK_SET);
+
+    // Check progress/cancel BEFORE creating or truncating the remote file!
+    if (!ReportProgress(localPath, resumeOffset, total))
+    {
+        ErrorMsg = "Cancelled by user.";
+        fclose(f);
+        return false;
+    }
+
     // resume: open without TRUNC and seek to position; otherwise overwrite from beginning
     long flags = LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT;
     if (resumeOffset > 0 && resumeOffset < total)
@@ -1336,7 +1375,6 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     bool ok = true;
     unsigned __int64 done = resumeOffset;
     size_t n;
-    if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_sftp_close(h); return false; }
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
     {
         char* p = buf;
@@ -1353,6 +1391,10 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     }
     fclose(f);
     libssh2_sftp_close(h);
+    if (!ok && done == 0 && resumeOffset == 0)
+    {
+        libssh2_sftp_unlink(Sftp, remotePath); // clean up 0-byte remote file if cancelled before any data was written
+    }
     return ok;
 }
 

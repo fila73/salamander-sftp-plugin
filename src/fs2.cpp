@@ -723,7 +723,20 @@ static DWORD g_ProgStartTick = 0;
 static HWND g_OvrParent = NULL;
 static int g_OvrMode = 0;        // 0 = ask, 1 = overwrite all, 2 = skip all
 static bool g_OvrCancel = false; // user chose Cancel
+static bool g_ProgCancel = false; // user clicked Cancel in transfer progress dialog
 static int g_SyncMode = 0;       // 1 = synchronization (skip matching, don't ask)
+
+static bool SftpIsCancelled()
+{
+    if (g_OvrCancel || g_ProgCancel)
+        return true;
+    if (g_ProgDlg != NULL && g_ProgDlg->GetWantCancel())
+    {
+        g_ProgCancel = true;
+        return true;
+    }
+    return false;
+}
 
 // returns: 1 = overwrite, 0 = skip, -1 = cancel whole operation
 static int SftpAskOverwrite(const char* targetName)
@@ -838,7 +851,12 @@ static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 d
         g_ProgDlg->SetCurrentFile(name, total);
     }
     g_ProgDlg->UpdateFileProgress(done, total);
-    return !g_ProgDlg->GetWantCancel();
+    if (g_ProgDlg->GetWantCancel())
+    {
+        g_ProgCancel = true;
+        return false;
+    }
+    return true;
 }
 
 static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0)
@@ -852,6 +870,7 @@ static void SftpProgressBegin(HWND parent, bool upload = false, const char* from
     g_ProgStartTick = GetTickCount();
     g_OvrMode = 0;
     g_OvrCancel = false;
+    g_ProgCancel = false;
     g_OvrParent = parent;
     g_ProgDlg = new CSftpTransferProgressDlg(g_ProgMainWnd, ooStatic);
     if (g_ProgDlg != NULL && g_ProgDlg->Create() != NULL)
@@ -875,6 +894,8 @@ static void SftpProgressEnd()
     CSftpConnection::SetProgressCallback(NULL, NULL);
     if (g_ProgDlg != NULL)
     {
+        if (g_ProgDlg->GetWantCancel())
+            g_ProgCancel = true;
         EnableWindow(g_ProgMainWnd, TRUE);
         DestroyWindow(g_ProgDlg->HWindow);
         delete g_ProgDlg;
@@ -1842,12 +1863,16 @@ static bool SftpDeleteRecursive(const char* remote, bool isDir)
 // recursive download of file/directory from SFTP to disk
 static bool SftpDownloadRecursive(const char* remote, const char* local, bool isDir)
 {
+    if (SftpIsCancelled())
+        return false;
     if (!isDir)
     {
         if (g_SyncMode) // synchronization: without asking, only missing/changed
         {
             if (SyncSkipDownload(remote, local))
                 return true;
+            if (SftpIsCancelled())
+                return false;
             return SftpConn.Download(remote, local);
         }
         if (GetFileAttributes(local) != INVALID_FILE_ATTRIBUTES) // local file already exists
@@ -1860,6 +1885,7 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
             {
                 int r = SftpAskResume(local, localSize, remoteSize);
                 if (r == -1) { g_OvrCancel = true; return false; }
+                if (SftpIsCancelled()) return false;
                 if (r == 1) return SftpConn.Download(remote, local, localSize); // resume
                 // r == 2 -> overwrite (continue with full download)
             }
@@ -1875,14 +1901,20 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
                 }
             }
         }
+        if (SftpIsCancelled())
+            return false;
         return SftpConn.Download(remote, local);
     }
+    if (SftpIsCancelled())
+        return false;
     CreateDirectory(local, NULL);
     std::vector<CSftpEntry> entries;
     if (!SftpConn.ListDir(remote, entries))
         return false;
     for (size_t i = 0; i < entries.size(); i++)
     {
+        if (SftpIsCancelled())
+            return false;
         char r[MAX_PATH], l[2 * MAX_PATH];
         SftpJoin(remote, entries[i].Name.c_str(), r, MAX_PATH);
         lstrcpyn(l, local, 2 * MAX_PATH);
@@ -1896,12 +1928,16 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
 // recursive upload of file/directory from disk to SFTP
 static bool SftpUploadRecursive(const char* local, const char* remote, bool isDir)
 {
+    if (SftpIsCancelled())
+        return false;
     if (!isDir)
     {
         if (g_SyncMode) // synchronization: without asking, only missing/changed
         {
             if (SyncSkipUpload(local, remote))
                 return true;
+            if (SftpIsCancelled())
+                return false;
             return SftpConn.Upload(local, remote);
         }
         if (SftpConn.PathType(remote) == 1) // remote file already exists
@@ -1914,6 +1950,7 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
             {
                 int r = SftpAskResume(remote, remoteSize, localSize);
                 if (r == -1) { g_OvrCancel = true; return false; }
+                if (SftpIsCancelled()) return false;
                 if (r == 1) return SftpConn.Upload(local, remote, remoteSize); // resume
                 // r == 2 -> overwrite
             }
@@ -1929,8 +1966,12 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
                 }
             }
         }
+        if (SftpIsCancelled())
+            return false;
         return SftpConn.Upload(local, remote);
     }
+    if (SftpIsCancelled())
+        return false;
     SftpConn.MakeDir(remote); // ignore error (may already exist)
     char mask[2 * MAX_PATH];
     lstrcpyn(mask, local, 2 * MAX_PATH);
@@ -1942,6 +1983,11 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
     bool ok = true;
     do
     {
+        if (SftpIsCancelled())
+        {
+            ok = false;
+            break;
+        }
         if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
             continue;
         char l[2 * MAX_PATH], r[MAX_PATH];
@@ -2301,13 +2347,13 @@ void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int d
     SftpProgressEnd();
     if (direction == 1)
         SalamanderGeneral->PostChangeOnPathNotification(remoteDir, TRUE); // refresh remote panel
-    if (!ok && !g_OvrCancel)
+    if (!ok && !SftpIsCancelled())
     {
         char eb[600];
         _snprintf_s(eb, _TRUNCATE, "Synchronization failed:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
     }
-    else if (!g_OvrCancel)
+    else if (!SftpIsCancelled())
         SalamanderGeneral->SalMessageBox(parent, "Synchronization completed.", LoadStr(IDS_PLUGINNAME),
                                          MB_OK | MB_ICONINFORMATION);
 }
@@ -2662,6 +2708,11 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF);
         while (1)
         {
+            if (SftpIsCancelled())
+            {
+                okF = FALSE;
+                break;
+            }
             ff = focusedF ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDirF)
                           : SalamanderGeneral->GetPanelSelectedItem(panel, &indexF, &isDirF);
             if (ff == NULL)
@@ -2676,7 +2727,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
             LocalDeleteRecursive(tmpItem, isDirF != 0); // cleanup temp
             if (!step)
             {
-                if (g_OvrCancel)
+                if (SftpIsCancelled())
                 {
                     okF = FALSE;
                     break;
@@ -2716,6 +2767,11 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     SftpProgressBegin(parent, false, Path, target, totalFiles);
     while (1)
     {
+        if (SftpIsCancelled())
+        {
+            success = FALSE;
+            break;
+        }
         f = focused ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDir)
                     : SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir);
         if (f == NULL)
@@ -2726,7 +2782,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         SalamanderGeneral->SalPathAppend(local, f->Name, 2 * MAX_PATH);
         if (!SftpDownloadRecursive(remote, local, isDir != 0))
         {
-            if (g_OvrCancel)
+            if (SftpIsCancelled())
             {
                 success = FALSE;
                 break;
@@ -2827,6 +2883,11 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles);
     while ((name = next(NULL, 0, &dosName, &isDir, &size, &attr, &lastWrite, nextParam, NULL)) != NULL)
     {
+        if (SftpIsCancelled())
+        {
+            success = FALSE;
+            break;
+        }
         // 'name' is relative name; full local path = sourcePath + name
         char local[2 * MAX_PATH];
         lstrcpyn(local, sourcePath, 2 * MAX_PATH);
@@ -2838,7 +2899,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
         SftpJoin(remoteDir, base, remote, MAX_PATH);
         if (!SftpUploadRecursive(local, remote, isDir != 0))
         {
-            if (g_OvrCancel)
+            if (SftpIsCancelled())
             {
                 success = FALSE;
                 break;

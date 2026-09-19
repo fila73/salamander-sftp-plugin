@@ -155,4 +155,26 @@ Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
    - Vzdálené cesty v polích `From:` a `To:` jsou formátovány pomocí `SftpFormatTransferPath`: detekuje se vzdálená cesta (`SftpIsPathRemote`) a automaticky se předřadí jméno aktivního profilu `[NAS] /cesta` s následným zkrácením přes `PathCompactPathExA` (prefix `[NAS]` zůstává vždy zachován).
    - Titulek okna v `WM_INITDIALOG` je rovněž obohacen o prefix `[Jméno_konexe]`, což uživateli umožňuje okamžitě vidět, ke kterému serveru operace náleží.
 
+---
+
+## 9. Správné ošetření storna operací a prevence vzniku 0-bajtových souborů
+
+Při přenosu více souborů nebo rekurzivním stahování/nahrávání musí plugin korektně reagovat na stisk tlačítka **Storno / Cancel** v progress dialogu (`CSftpTransferProgressDlg`):
+
+1. **Centralizovaná detekce storna (`SftpIsCancelled`)**:
+   - Funkce kontroluje jak `g_OvrCancel` (storno z dialogu dotazu na přepis/resume), tak stav progress dialogu `g_ProgDlg->GetWantCancel()`.
+   - Stav storna se ukládá do perzistentního příznaku `g_ProgCancel`, který přetrvá i po destrukci okna progress dialogu v `SftpProgressEnd()`.
+   - Všechny hlavní smyčky (`CopyOrMoveFromFS`, `CopyOrMoveFromDiskToFS`, `SftpDownloadRecursive`, `SftpUploadRecursive`) testují `SftpIsCancelled()` na začátku každé iterace. Při stornu se smyčka ihned ukončí (`break`), aniž by se dotazovala uživatele na *"Continue with other items?"*.
+
+2. **Ověření storna před otevřením / vytvořením souboru**:
+   - V `Download`, `Upload`, `ScpDownload` i `ScpUpload` se `ReportProgress(path, 0, total)` volá **před** jakýmkoliv voláním `fopen_s` nebo `libssh2_sftp_open(..., CREAT | TRUNC)`.
+   - Pokud uživatel zrušil operaci dříve, `ReportProgress` vrátí `false` a soubor se vůbec neotevře ani nezaloží prázdný na cílovém úložišti.
+
+3. **Úklid nedokončených 0-bajtových souborů**:
+   - Pokud došlo k přerušení transferu a nebylo přeneseno nic (`!ok && done == 0 && resumeOffset == 0`), soubor se okamžitě smaže:
+     - Lokálně: `DeleteFileA(localPath)`
+     - Vzdáleně: `libssh2_sftp_unlink(Sftp, remotePath)`
+   - Pokud již byla přenesena část dat (`done > 0`), data zůstávají na disku/serveru pro možnost budoucího navázání (resume).
+
+
 

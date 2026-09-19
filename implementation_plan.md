@@ -86,6 +86,17 @@ Tento plán popisuje realizaci Fáze A pro plugin SFTP v Open Salamanderu: nahra
 - [x] Předávání informací o operaci v `SftpSyncDir`, `CopyOrMoveFromFS`, `CopyOrMoveToFS`
 - [x] Zobrazení jména konexe `[NAS]` ve vzdálených cestách (`From:` / `To:`) a v záhlaví okna přenosu
 - [x] Kompilace a ověření buildů `sftp.spl`, `english.slg`, `czech.slg`
-- [x] Aktualizace dokumentace (`PLUGIN_DEV.md`, `jobs_done.md`, `README_CZ.md`, `README.md`, `nice_to_have.md`)
+- [x] Zamezení vzniku 0B souborů při stornu & okamžité ukončení přenosových smyček bez dotazů (`src/sftpconn.cpp`, `src/fs2.cpp`)
+
+---
+
+## Ošetření storna přenosu a prevence vzniku 0-bajtových souborů
+- **Problém**: Při stisku Storno v přenosovém dialogu vznikaly v cílovém umístění 0B prázdné soubory pro položky, které se ještě nezačaly přenášet, a smyčky pokračovaly v iteraci.
+- **Řešení**:
+  1. Kontrola `ReportProgress` před jakýmkoli vytvořením/zkrácením souboru (`fopen_s` / `libssh2_sftp_open`).
+  2. Automatický úklid nedotčených souborů (`DeleteFileA` / `libssh2_sftp_unlink`), pokud došlo ke stornu před zápisem prvního bajtu (`done == 0 && resumeOffset == 0`).
+  3. Zavedení `SftpIsCancelled()`, který detekuje jak dialog přepisu (`g_OvrCancel`), tak tlačítko Storno v progress dialogu (`g_ProgDlg->GetWantCancel()`, `g_ProgCancel`).
+  4. Okamžité přerušení smyček (`break`) v `CopyOrMoveFromFS`, `CopyOrMoveFromDiskToFS`, `SftpDownloadRecursive` a `SftpUploadRecursive` bez dotazování uživatele na pokračování.
+
 
 
