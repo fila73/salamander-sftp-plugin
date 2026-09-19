@@ -160,6 +160,15 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         LRESULT darkBrush = 0;
         if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &darkBrush))
             return (INT_PTR)darkBrush;
+        if (PluginDarkMode_ShouldUseDark())
+        {
+            HDC hdc = (HDC)wParam;
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(220, 220, 220));
+            SetBkColor(hdc, RGB(32, 32, 32));
+            static HBRUSH s_darkBgBrush = CreateSolidBrush(RGB(32, 32, 32));
+            return (INT_PTR)s_darkBgBrush;
+        }
         break;
     }
 
@@ -331,6 +340,15 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         LRESULT darkBrush = 0;
         if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &darkBrush))
             return (INT_PTR)darkBrush;
+        if (PluginDarkMode_ShouldUseDark())
+        {
+            HDC hdc = (HDC)wParam;
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(220, 220, 220));
+            SetBkColor(hdc, RGB(32, 32, 32));
+            static HBRUSH s_darkBgBrush = CreateSolidBrush(RGB(32, 32, 32));
+            return (INT_PTR)s_darkBgBrush;
+        }
         break;
     }
 
@@ -992,6 +1010,15 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         LRESULT darkBrush = 0;
         if (PluginDarkMode_HandleCtlColor(uMsg, wParam, lParam, &darkBrush))
             return (INT_PTR)darkBrush;
+        if (PluginDarkMode_ShouldUseDark())
+        {
+            HDC hdc = (HDC)wParam;
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(220, 220, 220));
+            SetBkColor(hdc, RGB(32, 32, 32));
+            static HBRUSH s_darkBgBrush = CreateSolidBrush(RGB(32, 32, 32));
+            return (INT_PTR)s_darkBgBrush;
+        }
         break;
     }
 

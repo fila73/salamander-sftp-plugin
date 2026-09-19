@@ -74,7 +74,7 @@ CPP_SRCS = \
     $(SHARED_DIR)/dbg.cpp \
     $(SHARED_DIR)/mhandles.cpp \
     $(SHARED_DIR)/winliblt.cpp \
-    $(SHARED_DIR)/plugindarkmode.cpp
+    src/plugindarkmode.cpp
 
 CPP_OBJS = $(CPP_SRCS:.cpp=.o)
 

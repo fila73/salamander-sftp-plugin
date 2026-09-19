@@ -260,8 +260,10 @@ Salamander od verze 5.0 integruje celoaplikační tmavý režim řízený přes 
      - `PluginDarkMode_ApplyTitleBar(hwnd)` – zajistí tmavý titulek okna Windows (DWM).
      - `PluginDarkMode_ApplyListTreeThemeRecursive(hwnd)` – nastaví tmavý režim pro podřízené ovládací prvky.
      - Pro tlačítka typu `BS_PUSHBUTTON` / `BS_DEFPUSHBUTTON` je v tmavém režimu nutné explicitně zavolat `SetWindowTheme(child, L"DarkMode_Explorer", NULL);`, aby tlačítka převzala moderní tmavý vizuální styl systému Windows namísto bílého rámečku.
-3. **Obsluha barev v dialogové proceduře**:
-   - Ve zprávách `WM_CTLCOLORDLG`, `WM_CTLCOLORSTATIC` a `WM_CTLCOLORBTN` se předává řízení do `PluginDarkMode_HandleCtlColor(uMsg, (HDC)wParam, (HWND)lParam)`. Pokud vrátí nenulový štětec `HBRUSH`, dialogová procedura jej vrátí jako výsledek (`(INT_PTR)hbr`).
+3. **Obsluha barev v dialogové proceduře & oprava `SS_TYPEMASK`**:
+   - Ve zprávách `WM_CTLCOLORDLG`, `WM_CTLCOLORSTATIC` a `WM_CTLCOLORBTN` se předává řízení do `PluginDarkMode_HandleCtlColor(uMsg, (HDC)wParam, (HWND)lParam)`.
+   - **Kritický gotcha v `plugindarkmode.cpp`**: V původním kódu byla podmínka `if ((style & (SS_ICON | ...)) != 0) return FALSE;`. V rozhraní Win32 však typ statického prvku není bitmaska, nýbrž enum v rozsahu `style & SS_TYPEMASK`. Protože hodnota masky byla `0x0F`, prvky `SS_RIGHT` (2) i `SS_LEFTNOWORDWRAP` (12) vracely `FALSE` a nebyly dark módem obslouženy. Kód byl zafixován na `LONG_PTR type = style & SS_TYPEMASK; if (type == SS_ICON || ...) return FALSE;`.
+   - Současně byla do `DialogProc` dialogů (`CSftpTransferProgressDlg`, `CDeleteProgressDlg`, `CCalcSizeProgressDlg`) doplněna pojistka: pokud by `PluginDarkMode_HandleCtlColor` vrátil `FALSE`, ale `PluginDarkMode_ShouldUseDark()` je aktivní, dialog přímo nastaví `SetBkMode(hdc, TRANSPARENT)`, `SetTextColor(hdc, RGB(220, 220, 220))`, `SetBkColor(hdc, RGB(32, 32, 32))` a vrátí tmavý štětec `s_darkBgBrush`.
 
 ---
 
