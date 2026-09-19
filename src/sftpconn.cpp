@@ -68,45 +68,9 @@ CSftpConnection::CSftpConnection()
 
 CSftpConnection::~CSftpConnection() { Disconnect(); }
 
-// Load libssh2.dll (and its OpenSSL dependencies) from this plugin's directory.
-// Without this, due to DLL search order, a foreign libssh2.dll from PATH
-// (e.g. from PHP) could be loaded. Thanks to delay-load, libssh2 imports are
-// bound only after this call.
-static void LoadBundledLibssh2()
-{
-    SftpTraceLog("LoadBundledLibssh2: start");
-    HMODULE self = nullptr;
-    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            (LPCSTR)&LoadBundledLibssh2, &self) ||
-        self == nullptr)
-    {
-        SftpTraceLog("LoadBundledLibssh2: GetModuleHandleExA failed");
-        return;
-    }
-    char path[MAX_PATH];
-    if (GetModuleFileNameA(self, path, MAX_PATH) == 0)
-    {
-        SftpTraceLog("LoadBundledLibssh2: GetModuleFileNameA failed");
-        return;
-    }
-    char* slash = strrchr(path, '\\');
-    if (slash == nullptr)
-        return;
-    // order: dependencies first (zlib, OpenSSL), then libssh2
-    const char* dlls[] = {"z.dll", "libcrypto-3-x64.dll", "libssh2.dll"};
-    for (int i = 0; i < 3; i++)
-    {
-        strcpy(slash + 1, dlls[i]);
-        HMODULE h = LoadLibraryExA(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-        SftpTraceLog("LoadBundledLibssh2: loaded %s -> %p", path, h);
-    }
-}
-
 bool CSftpConnection::GlobalInit()
 {
     SftpTraceLog("CSftpConnection::GlobalInit: start");
-    LoadBundledLibssh2();
-    SftpTraceLog("CSftpConnection::GlobalInit: after LoadBundledLibssh2");
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
     {

@@ -97,13 +97,13 @@ Při výpočtu velikosti složek (`Calculate Size (server)`):
 
 Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
 - **Statické runtimes**: `Makefile.mingw` používá `-static -static-libgcc -static-libstdc++`, což eliminuje závislosti na `libwinpthread-1.dll`, `libgcc_s_seh-1.dll` i `libstdc++-6.dll`.
-- **Statický libssh2**: Slinkován ze statického archivu `libssh2_static.a`.
-- **Knihovny (`libcrypto-3-x64.dll`, `libssh2.dll`, `z.dll`)**: Distribuují se jako samostatné 64bitové DLL přímo ve složce pluginu (`plugins\sftp\`), odkud je `sftp.cpp` / `sftpconn.cpp` při startu přednostně načítá (`LOAD_WITH_ALTERED_SEARCH_PATH` / `LoadBundledLibssh2`).
+- **Statický libssh2**: Slinkován přímo do `sftp.spl` ze statického archivu `libssh2_static.a` (není potřeba žádná externí `libssh2.dll` ani `z.dll`).
+- **Knihovna OpenSSL (`libcrypto-3-x64.dll`)**: `sftp.spl` importuje `libcrypto-3-x64.dll` standardním PE importem. V Open Salamandru se tato knihovna nachází přímo v kořenovém adresáři aplikace (`C:\Apps\samandarin\libcrypto-3-x64.dll`). Starý kód `LoadBundledLibssh2()`, který ji načítal explicitně s `LOAD_WITH_ALTERED_SEARCH_PATH`, byl odstraněn, protože vedl k duplicitnímu načtení druhého OpenSSL runtime a poškození heapu (`0xc0000374`).
 - **Ověření závislostí**:
   ```powershell
   objdump -p sftp.spl | Select-String "DLL Name"
   ```
-  Výstup smí obsahovat pouze standardní Windows systémové knihovny a `libcrypto-3-x64.dll` / `libssh2.dll` / `z.dll`.
+  Výstup smí obsahovat pouze standardní Windows systémové knihovny a `libcrypto-3-x64.dll`.
 - **Statická analýza**:
   ```powershell
   cppcheck --enable=warning,performance,portability,style src/

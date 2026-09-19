@@ -7,6 +7,17 @@ void WrapCommandWithSftpServerPrefix(const char* sftpServer, const char* rawCmd,
     if (outBuf && outSize > 0) outBuf[0] = 0;
 }
 
+void SftpTraceLog(const char* fmt, ...)
+{
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    BOOL ok = HeapValidate(GetProcessHeap(), 0, NULL);
+    printf("[TRACE %s] %s\n", ok ? "OK" : "CORRUPT!", buf);
+}
+
 static void check_heap(const char* label)
 {
     BOOL ok = HeapValidate(GetProcessHeap(), 0, NULL);
