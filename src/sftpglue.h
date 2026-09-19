@@ -51,8 +51,9 @@ extern char SftpDefaultSession[128]; // default connection name ("As default" op
 extern char SftpFolders[SFTP_MAX_FOLDERS][128]; // folder names (including empty)
 extern int SftpFolderCount;
 
-// Ensures connection per SftpProfile. Returns TRUE if connected.
-bool SftpEnsureConnected(HWND parent);
+// Ensures connection per CSftpProfile. Returns TRUE if connected.
+bool SftpEnsureConnected(HWND parent, CSftpConnection& conn, CSftpProfile& profile);
+bool SftpEnsureConnected(HWND parent); // legacy/transitional wrapper
 
 extern int SftpEncoding; // 0 = Auto/UTF-8, 1 = UTF-8, 2 = Off
 

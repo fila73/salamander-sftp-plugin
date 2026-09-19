@@ -63,11 +63,11 @@ static const char* SftpKnownHostsPath()
     return path;
 }
 
-bool SftpEnsureConnected(HWND parent)
+bool SftpEnsureConnected(HWND parent, CSftpConnection& conn, CSftpProfile& profile)
 {
-    if (SftpConn.IsConnected())
+    if (conn.IsConnected())
         return true;
-    if (!SftpProfile.Valid || SftpProfile.Host[0] == 0)
+    if (!profile.Valid || profile.Host[0] == 0)
     {
         SalamanderGeneral->SalMessageBox(parent, "No SFTP connection configured.\nOpen sftp: path and enter server.",
                                          LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
@@ -83,16 +83,21 @@ bool SftpEnsureConnected(HWND parent)
         initialized = true;
     }
     CSftpConnection::SetEncoding(SftpEncoding); // filename encoding
-    if (!SftpConn.Connect(SftpProfile.Host, SftpProfile.Port, SftpProfile.User, SftpProfile.Password, SftpProfile.KeyFile,
-                          SftpProfile.UseCompression, SftpProfile.Protocol, SftpProfile.ScpFallback, SftpProfile.SftpServer))
+    if (!conn.Connect(profile.Host, profile.Port, profile.User, profile.Password, profile.KeyFile,
+                      profile.UseCompression, profile.Protocol, profile.ScpFallback, profile.SftpServer))
     {
         char buf[600];
         _snprintf_s(buf, _TRUNCATE, "Cannot connect to SFTP server %s:%d.\n\n%s",
-                    SftpProfile.Host, SftpProfile.Port, SftpConn.LastError());
+                    profile.Host, profile.Port, conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, buf, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
     return true;
+}
+
+bool SftpEnsureConnected(HWND parent)
+{
+    return SftpEnsureConnected(parent, SftpConn, SftpProfile);
 }
 
 void SftpNormalize(char* path)

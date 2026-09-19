@@ -914,6 +914,30 @@ CPluginFSInterface::CPluginFSInterface()
     PathError = FALSE;
     FatalError = FALSE;
     CalledFromDisconnectDialog = FALSE;
+    memset(&Profile, 0, sizeof(Profile));
+    Profile.Port = 22;
+    Profile.Valid = false;
+}
+
+CPluginFSInterface::~CPluginFSInterface()
+{
+    Conn.Disconnect();
+}
+
+bool CPluginFSInterface::EnsureConnected(HWND parent)
+{
+    return SftpEnsureConnected(parent, Conn, Profile);
+}
+
+void CPluginFSInterface::HostPrefix(char* out, int outSize) const
+{
+    char portpart[16] = "";
+    if (Profile.Port != 0 && Profile.Port != 22)
+        _snprintf_s(portpart, _TRUNCATE, ":%d", Profile.Port);
+    if (Profile.User[0] != 0)
+        _snprintf_s(out, outSize, _TRUNCATE, "//%s@%s%s", Profile.User, Profile.Host, portpart);
+    else
+        _snprintf_s(out, outSize, _TRUNCATE, "//%s%s", Profile.Host, portpart);
 }
 
 void WINAPI

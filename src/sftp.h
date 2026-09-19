@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include "sftpglue.h"
+
 // if SFTP_QUIET is defined, keep message-box prompts to a minimum
 #define SFTP_QUIET
 
@@ -401,11 +403,13 @@ struct CConnectData
 {
     BOOL UseConnectData;
     char UserPart[MAX_PATH];
+    CSftpProfile Profile;
 
     CConnectData()
     {
         UseConnectData = FALSE;
         UserPart[0] = 0;
+        memset(&Profile, 0, sizeof(Profile));
     }
 };
 
@@ -640,9 +644,17 @@ public:
     CTopIndexMem TopIndexMem;        // top-index cache used by ExecuteOnFS()
     BOOL CalledFromDisconnectDialog; // TRUE = the user wants to disconnect this FS from the Disconnect dialog (F12)
 
+    CSftpConnection Conn;            // per-instance SSH/SFTP connection
+    CSftpProfile    Profile;         // per-instance connection profile
+
+    CSftpConnection& GetConn() { return Conn; }
+    CSftpProfile& GetProfile() { return Profile; }
+    bool EnsureConnected(HWND parent);
+    void HostPrefix(char* out, int outSize) const;
+
 public:
     CPluginFSInterface();
-    ~CPluginFSInterface() {}
+    ~CPluginFSInterface();
 
     virtual BOOL WINAPI GetCurrentPath(char* userPart);
     virtual BOOL WINAPI GetFullName(CFileData& file, int isDir, char* buf, int bufSize);
