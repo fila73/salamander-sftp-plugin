@@ -52,7 +52,7 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ## BOD 9: Per-instance konexe
 
-### Krok 9.1 – Přesun `CSftpConnection` a `CSftpProfile` z globálních proměnných do `CPluginFSInterface`
+### Krok 9.1 – Přesun `CSftpConnection` a `CSftpProfile` z globálních proměnných do `CPluginFSInterface` [DOKONČENO]
 
 **Cíl**: Každá FS instance vlastní svůj objekt `CSftpConnection` a svůj `CSftpProfile`.
 
