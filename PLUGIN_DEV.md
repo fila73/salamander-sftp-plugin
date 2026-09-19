@@ -248,11 +248,13 @@ Salamander od verze 5.0 integruje celoaplikační tmavý režim řízený přes 
      if (general->GetConfigParameter(SALCFG_USEWINDOWSDARKMODE, &useDark, sizeof(useDark), NULL))
      {
          PluginDarkMode_SetHostPolicyAvailable(TRUE, useDark ? TRUE : FALSE);
-         COLORREF fg = general->GetCurrentColor(SALCOL_ITEM_FG_NORMAL);
-         COLORREF bg = general->GetCurrentColor(SALCOL_ITEM_BK_NORMAL);
-         PluginDarkMode_SetHostColors(fg, bg);
+         if (useDark)
+             PluginDarkMode_SetHostResolvedColors(RGB(220, 220, 220), RGB(32, 32, 32), RGB(220, 220, 220));
+         else
+             PluginDarkMode_SetHostResolvedColors(CLR_INVALID, CLR_INVALID, CLR_INVALID);
      }
      ```
+   - **Důležité**: Pro dialogy nelze použít barvy `SALCOL_ITEM_FG_NORMAL` a `SALCOL_ITEM_BK_NORMAL`, protože ty reprezentují barvy položek panelu souborů (které mohou mít světlé pozadí např. `RGB(240, 240, 240)`), což by způsobilo bílé rámečky pod statickými texty (`WM_CTLCOLORSTATIC`). Volá se proto `PluginDarkMode_SetHostResolvedColors` s nativními dialogovými tmavými barvami `RGB(32, 32, 32)` a textem `RGB(220, 220, 220)`.
 2. **Aplikace na dialogové okno (`SftpApplyDarkModeToWindow`)**:
    - Při `WM_INITDIALOG` a při změně motivu (`WM_THEMECHANGED`, `WM_SETTINGCHANGE`) se volá pomocná funkce:
      - `PluginDarkMode_ApplyTitleBar(hwnd)` – zajistí tmavý titulek okna Windows (DWM).

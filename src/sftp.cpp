@@ -444,9 +444,12 @@ void SftpInitDarkMode(CSalamanderGeneralAbstract* general)
         PluginDarkMode_SetHostPolicyAvailable(TRUE, useDark);
         if (useDark)
         {
-            COLORREF fg = general->GetCurrentColor(SALCOL_ITEM_FG_NORMAL);
-            COLORREF bg = general->GetCurrentColor(SALCOL_ITEM_BK_NORMAL);
-            PluginDarkMode_SetHostColors(fg, bg);
+            // Set dark scheme colors for dialog controls (dark dialog background RGB(32,32,32) and readable light text)
+            PluginDarkMode_SetHostResolvedColors(RGB(220, 220, 220), RGB(32, 32, 32), RGB(220, 220, 220));
+        }
+        else
+        {
+            PluginDarkMode_SetHostResolvedColors(CLR_INVALID, CLR_INVALID, CLR_INVALID);
         }
     }
 }
