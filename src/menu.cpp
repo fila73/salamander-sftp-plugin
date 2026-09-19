@@ -209,9 +209,42 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
 
     case MENUCMD_SHOWTRANSFERS:
     {
+        // 1. Try active panel
         CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
-        if (fs != NULL)
+        if (fs != NULL && InterfaceForFS.IsOurFS(fs) && fs->ActiveTransferDlg != NULL)
+        {
             fs->ShowTransferDialog(parent);
+            return TRUE;
+        }
+
+        // 2. Try inactive panel
+        CPluginFSInterface* targetFs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_TARGET);
+        if (targetFs != NULL && InterfaceForFS.IsOurFS(targetFs) && targetFs->ActiveTransferDlg != NULL)
+        {
+            targetFs->ShowTransferDialog(parent);
+            return TRUE;
+        }
+
+        // 3. Try any active or detached FS instance in ActiveFSList
+        const std::vector<CPluginFSInterfaceAbstract*>& list = InterfaceForFS.GetActiveFSList();
+        for (size_t i = 0; i < list.size(); i++)
+        {
+            CPluginFSInterface* candidate = (CPluginFSInterface*)list[i];
+            if (candidate != NULL && candidate->ActiveTransferDlg != NULL)
+            {
+                candidate->ShowTransferDialog(parent);
+                return TRUE;
+            }
+        }
+
+        // If currently in our FS panel, let ShowTransferDialog display its message
+        if (fs != NULL && InterfaceForFS.IsOurFS(fs))
+        {
+            fs->ShowTransferDialog(parent);
+            return TRUE;
+        }
+
+        SalamanderGeneral->SalMessageBox(parent, LoadStr(IDS_NOTRANSFERS_ACTIVE), LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
         return TRUE;
     }
 

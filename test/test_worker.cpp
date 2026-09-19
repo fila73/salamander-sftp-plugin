@@ -67,6 +67,33 @@ int main()
     worker.Stop();
     assert(!worker.IsRunning());
 
+    // Test Reset()
+    worker.Reset();
+    assert(!worker.HasTasks());
+    worker.GetStateSnapshot(snap);
+    assert(snap.TotalItemsCount == 0);
+    assert(snap.TotalBytesExpected == 0);
+    assert(!snap.Cancelled);
+    printf("  Worker Reset() verified successfully.\n");
+
+    // Test fresh second transfer
+    CSftpTransferTask task3;
+    task3.TaskType = CSftpTransferTask::TaskDownload;
+    task3.RemotePath = "/mnt/data/single.txt";
+    task3.LocalPath = "C:\\Downloads\\single.txt";
+    task3.FileSize = 1024;
+    task3.ResumeOffset = 0;
+    task3.IsDirectory = false;
+    task3.DeleteSourceOnSuccess = false;
+
+    worker.EnqueueTask(task3);
+    assert(worker.HasTasks());
+    worker.GetStateSnapshot(snap);
+    assert(snap.TotalItemsCount == 1);
+    assert(snap.TotalBytesExpected == 1024);
+    printf("  Worker second transfer queue verified (1 item, 1024 bytes).\n");
+
+    worker.Reset();
     printf("ALL SFTP TRANSFER WORKER UNIT TESTS PASSED SUCCESSFULLY!\n");
     return 0;
 }

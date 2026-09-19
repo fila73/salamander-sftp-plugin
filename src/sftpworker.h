@@ -102,6 +102,8 @@ public:
     bool Start(const CSftpProfile& profile, HWND dlgHwnd = NULL);
     // Gracefully stop worker and wait for thread termination
     void Stop();
+    // Reset worker state and queue for fresh transfer operation
+    void Reset();
     // Add transfer task to queue
     void EnqueueTask(const CSftpTransferTask& task);
     // Cancel ongoing and queued transfers

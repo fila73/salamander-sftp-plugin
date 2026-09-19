@@ -238,6 +238,7 @@ protected:
 public:
     CPluginInterfaceForFS() { ActiveFSCount = 0; }
     int GetActiveFSCount() { return ActiveFSCount; }
+    const std::vector<CPluginFSInterfaceAbstract*>& GetActiveFSList() const { return ActiveFSList; }
     bool IsOurFS(CPluginFSInterfaceAbstract* fs) const
     {
         for (size_t i = 0; i < ActiveFSList.size(); i++)

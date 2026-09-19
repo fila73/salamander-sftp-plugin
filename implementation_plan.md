@@ -1,10 +1,16 @@
-# Implementace dotazu na odpojení při opuštění SFTP panelu (TryCloseOrDetach) [HOTOVO]
+# Implementace dotazu na odpojení při opuštění SFTP panelu (TryCloseOrDetach) & opravy přenosů [HOTOVO]
 
-Tento plán navrhl a realizoval implementaci chování při opuštění SFTP panelu (změna disku, navigace pryč z virtuálního FS) podle osvědčeného vzoru oficiálního FTP pluginu v Open Salamandru.
+Tento plán navrhl a realizoval implementaci chování při opuštění SFTP panelu (změna disku, navigace pryč z virtuálního FS) podle osvědčeného vzoru oficiálního FTP pluginu v Open Salamandru, a následné opravy životního cyklu workeru a výpočtu progress baru.
 
 ## Stav realizace
 - **Stav**: Dokončeno, otestováno a nasazeno do `C:\Apps\samandarin\plugins\sftp\`.
-- **Výsledek**: Uživatel dostane na výběr mezi odpojením (**Odpojit**), ponecháním spojení na pozadí (**Ponechat**) nebo zrušením změny disku (**Storno**). Spojení na pozadí (Detached FS) zůstává živé a je dostupné z nabídky Změna disku (`Alt+F1`/`Alt+F2`) s prefixem profilu `[NAS]`.
+- **Výsledek**:
+  1. Uživatel dostane na výběr mezi odpojením (**Odpojit**), ponecháním spojení na pozadí (**Ponechat**) nebo zrušením změny disku (**Storno**). Spojení na pozadí (Detached FS) zůstává živé a je dostupné z nabídky Změna disku (`Alt+F1`/`Alt+F2`) s prefixem profilu `[NAS]`.
+  2. Opraveno nahrávání jazykových modulů z podsložky `plugins\sftp\lang\` a odstraněno hlášení „Error loading string".
+  3. Implementován reset čítačů a fronty workeru (`CSftpTransferWorker::Reset()`), aby se hodnoty nepřenášely do dalšího kopírování.
+  4. Celkový progress bar nyní přesně odráží objem přenesených dat (MB/kB) namísto pouhého počtu souborů.
+  5. Okno přenosu na pozadí lze kdykoliv vyvolat klávesovou zkratkou **`Ctrl+Shift+T`** nebo z menu Moduly -> SFTP -> Zobrazit přenosy... z libovolného panelu.
+
 
 
 ## Navržené změny

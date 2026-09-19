@@ -193,12 +193,15 @@ Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolov
 - **Dedikovaná SSH relace (`WorkerConn`)**: Worker thread otevírá vlastní SSH spojení se stejným profilem, takže hlavní panelové spojení `Conn` zůstává ihned volné pro plynulé procházení a práci v panelech Salamandera.
 - **Fronta úloh (`TaskQueue`)**: Úlohy typu `CSftpTransferTask` jsou bezpečně řazeny pod zámkem `QueueLock` a probouzeny signálem `WakeEvent`.
 - **Thread-safe stav (`CSftpTransferState`)**: Sdílený stav uchovává informace o přenesených bajtech, rychlosti v MB/s, ETA a celkovém počtu položek.
+- **Životní cyklus a Reset (`Reset()` / `Stop()`)**: Po dokončení každé přenosové operace je vlákno ukončeno a `WM_APP_SFTP_WORKER_FINISHED` volá `Worker->Stop()`. Před zahájením nové operace se volá `Worker->Reset()`, což zabraňuje nežádoucí akumulaci čítačů a počtů položek z předchozích přenosů.
 
 ### 3. Nemodální dialog s tokom na pozadí:
 - Dialog `CSftpTransferProgressDlg` běží nemodálně a neblokuje hlavní okno správce souborů.
 - **Tlačítko „Na pozadí" (`IDB_BACKGROUND`)**: Uživatel může dialog kdykoli minimalizovat či skrýt (`SW_HIDE`), přičemž přenos pokračuje plnou rychlostí v pozadí.
-- **Znovuotevření dialogu**: V menu pluginu je k dispozici položka **„Show Transfers..."** (`MENUCMD_SHOWTRANSFERS`), která skrytý dialog přenese zpět do popředí.
+- **Znovuzobrazení dialogu (`Ctrl+Shift+T`)**: V menu pluginu i pod klávesovou zkratkou **`Ctrl+Shift+T`** (`MENUCMD_SHOWTRANSFERS`) lze dialog kdykoliv přenést zpět do popředí. Příkaz je přístupný ze všech panelů (včetně lokálních disků) a prohledává všechny aktivní i odpojené FS relace.
+- **Celkový postup podle objemu dat (MB/kB)**: Celkový progress bar se počítá na základě poměru přenesených bajtů vůči celkovému očekávanému objemu dat (`TotalDoneBytes / TotalExpectedBytes`), nikoli pouhým počtem souborů.
 - **Notifikace změn**: Po dokončení všech úloh ve frontě worker dialog automaticky zavolá `SalamanderGeneral->PostChangeOnPathNotification` pro cíl i zdroj (u operací přesunutí / Move).
+
 
 ### 4. Null-safety při volání virtuálního FS (`ChangePath`, `IsCurrentPath`, `IsOurPath`):
 - Salamander při volání `ChangePanelPathToPluginFS` s prázdnou cestou (např. po stisku Login v Connect dialogu) předává do `ChangePath` parametr `userPart = NULL`.

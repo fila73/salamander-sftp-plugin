@@ -499,6 +499,10 @@ void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPat
     TotalExpectedBytes = totalExpectedBytes;
     TotalDoneBytes = 0;
     CurrentFileIndex = 0;
+    FileDoneBytes = 0;
+    FileTotalBytes = 0;
+    FileProgressCache = 0;
+    TotalProgressCache = 0;
 
     const char* activeConn = ConnName[0] != 0 ? ConnName : NULL;
     SftpFormatTransferPath(fromPath, !upload, FromPathCache, sizeof(FromPathCache), activeConn);
@@ -691,15 +695,57 @@ void CSftpTransferProgressDlg::UpdateFromWorker()
         FileProgressCache = 0;
     }
 
-    if (TotalFilesCount > 1)
+    TotalDoneBytes = snap.TotalBytesDone;
+    if (snap.TotalBytesExpected > 0)
+        TotalExpectedBytes = snap.TotalBytesExpected;
+
+    if (TotalExpectedBytes > 0)
+    {
+        TotalProgressCache = (DWORD)(TotalDoneBytes * 1000 / TotalExpectedBytes);
+        if (TotalProgressCache > 1000)
+            TotalProgressCache = 1000;
+
+        if (TotalFilesCount > 1)
+        {
+            const char* fmt = (TotalExpectedBytes >= 1048576) ? LoadStr(IDS_TR_TOTAL_ITEMS_MB) : LoadStr(IDS_TR_TOTAL_ITEMS_KB);
+            if (fmt != NULL && strstr(fmt, "%d") != NULL)
+            {
+                if (TotalExpectedBytes >= 1048576)
+                {
+                    _snprintf_s(TotalStatusCache, _TRUNCATE, fmt,
+                                CurrentFileIndex, TotalFilesCount,
+                                (double)TotalDoneBytes / 1048576.0, (double)TotalExpectedBytes / 1048576.0);
+                }
+                else
+                {
+                    _snprintf_s(TotalStatusCache, _TRUNCATE, fmt,
+                                CurrentFileIndex, TotalFilesCount,
+                                TotalDoneBytes / 1024, TotalExpectedBytes / 1024);
+                }
+            }
+            else
+            {
+                _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d (%.1f / %.1f MB)",
+                            CurrentFileIndex, TotalFilesCount,
+                            (double)TotalDoneBytes / 1048576.0, (double)TotalExpectedBytes / 1048576.0);
+            }
+        }
+        else
+        {
+            TotalStatusCache[0] = 0;
+        }
+    }
+    else if (TotalFilesCount > 1)
     {
         _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d", CurrentFileIndex, TotalFilesCount);
         TotalProgressCache = (DWORD)(((CurrentFileIndex - 1) * 1000 + FileProgressCache) / TotalFilesCount);
     }
     else
     {
+        TotalStatusCache[0] = 0;
         TotalProgressCache = FileProgressCache;
     }
+
 
     TextCacheIsDirty = TRUE;
     ProgressCacheIsDirty = TRUE;
@@ -868,8 +914,7 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
                     ShowWindow(HWindow, SW_SHOW);
                 SalamanderGeneral->SalMessageBox(HWindow, snap.ErrorMsg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
             }
-            Worker->SetDlgHwnd(NULL);
-            Worker->SetObserver(NULL);
+            Worker->Stop();
             Worker = NULL;
         }
         if (FS != NULL && FS->ActiveTransferDlg == this)
@@ -1677,7 +1722,7 @@ CPluginFSInterface::TryCloseOrDetach(BOOL forceClose, BOOL canDetach, BOOL& deta
             MSGBOXEX_PARAMS params;
             memset(&params, 0, sizeof(params));
             params.HParent = SalamanderGeneral->GetMsgBoxParent();
-            params.Flags = MSGBOXEX_YESNOCANCEL | MSGBOXEX_ICONQUESTION | MSGBOXEX_SILENT | MSGBOXEX_HINT;
+            params.Flags = MSGBOXEX_YESNOCANCEL | MSGBOXEX_ICONQUESTION | MSGBOXEX_SILENT;
             params.Caption = LoadStr(IDS_PLUGINNAME);
             params.Text = LoadStr(IDS_CLOSECONINPANEL);
 
@@ -3169,6 +3214,8 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     const CFileData* f;
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
 
+    TransferWorker.Reset();
+
     CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
     if (dlg == NULL)
     {
@@ -3275,6 +3322,8 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     FILETIME lastWrite;
     int totalFiles = (sourceFiles == 0 && sourceDirs == 0) ? 1 : (sourceFiles + sourceDirs);
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
+
+    TransferWorker.Reset();
 
     CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
     if (dlg == NULL)

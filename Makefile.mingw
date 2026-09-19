@@ -102,11 +102,12 @@ libssh2_static.a: $(LIBSSH2_OBJS)
 src/sftp.res: src/sftp.rc
 	cd src && $(RC) -O coff -I. -Ilang -I$(CURDIR)/$(SHARED_DIR) -I$(CURDIR)/$(SALAMAND_DIR) -i sftp.rc -o sftp.res
 
-src/lang/lang_en.res: src/lang/lang_en.rc
+src/lang/lang_en.res: src/lang/lang_en.rc src/lang/lang.rc2 src/sftp.rh2
 	cd src/lang && $(RC) -O coff -I. -I.. -I$(CURDIR)/$(SHARED_DIR) -I$(CURDIR)/$(SALAMAND_DIR) -i lang_en.rc -o lang_en.res
 
-src/lang/lang_cs.res: src/lang/lang_cs.rc
+src/lang/lang_cs.res: src/lang/lang_cs.rc src/lang/lang_cs.rc2 src/sftp.rh2
 	cd src/lang && $(RC) -O coff -I. -I.. -I$(CURDIR)/$(SHARED_DIR) -I$(CURDIR)/$(SALAMAND_DIR) -i lang_cs.rc -o lang_cs.res
+
 
 sftp.spl: libssh2_static.a libcrypto-3-x64.a $(ALL_OBJS) src/sftp.def
 	$(CXX) -shared src/sftp.def $(ALL_OBJS) $(LDFLAGS) -o $@

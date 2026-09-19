@@ -40,10 +40,46 @@ CSftpTransferWorker::~CSftpTransferWorker()
     State.Destroy();
 }
 
+void CSftpTransferWorker::Reset()
+{
+    if (ThreadHandle != NULL)
+    {
+        DWORD exitCode = 0;
+        if (GetExitCodeThread(ThreadHandle, &exitCode) && exitCode != STILL_ACTIVE)
+        {
+            CloseHandle(ThreadHandle);
+            ThreadHandle = NULL;
+            ThreadId = 0;
+        }
+    }
+
+    EnterCriticalSection(&QueueLock);
+    TaskQueue.clear();
+    LeaveCriticalSection(&QueueLock);
+
+    EnterCriticalSection(&State.Lock);
+    State.Reset();
+    LeaveCriticalSection(&State.Lock);
+
+    OverwriteAllDecision = -1;
+}
+
 bool CSftpTransferWorker::Start(const CSftpProfile& profile, HWND dlgHwnd)
 {
     if (ThreadHandle != NULL)
-        return false; // already running
+    {
+        DWORD exitCode = 0;
+        if (GetExitCodeThread(ThreadHandle, &exitCode) && exitCode != STILL_ACTIVE)
+        {
+            CloseHandle(ThreadHandle);
+            ThreadHandle = NULL;
+            ThreadId = 0;
+        }
+        else
+        {
+            return false; // already running
+        }
+    }
 
     Profile = profile;
     DlgHwnd = dlgHwnd;
@@ -53,7 +89,17 @@ bool CSftpTransferWorker::Start(const CSftpProfile& profile, HWND dlgHwnd)
     ResetEvent(WakeEvent);
 
     EnterCriticalSection(&State.Lock);
-    State.Reset();
+    // Note: Do not wipe TotalItemsCount or TotalBytesExpected; they were set by EnqueueTask!
+    State.CurrentLocalFile[0] = 0;
+    State.CurrentRemoteFile[0] = 0;
+    State.CurrentFileDone = 0;
+    State.CurrentFileTotal = 0;
+    State.CurrentItemIndex = 0;
+    State.TotalBytesDone = 0;
+    State.BytesPerSec = 0.0;
+    State.Cancelled = false;
+    State.HasError = false;
+    State.ErrorMsg[0] = 0;
     State.IsRunning = true;
     State.StartTick = GetTickCount();
     State.LastUpdateTick = State.StartTick;
@@ -112,6 +158,7 @@ void CSftpTransferWorker::Stop()
         LeaveCriticalSection(&State.Lock);
     }
 }
+
 
 void CSftpTransferWorker::EnqueueTask(const CSftpTransferTask& task)
 {
