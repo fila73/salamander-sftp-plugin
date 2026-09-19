@@ -42,11 +42,11 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ---
 
-## Otevřené otázky
+## Rozhodnutí k dřívějším otázkám
 
-1. **Chceme omezit maximální počet současně otevřených konexí?** (Např. max 8 FS instancí.) Nebo nechat libovolně?
-2. **Přenosy mezi dvěma SFTP servery (server-to-server)**: Chceme je řešit v tomto plánu, nebo později? (Salamander podporuje kopírování mezi dvěma FS panely, ale implementace vyžaduje dočasný lokální buffer.)
-3. **Persistence FS instance přes restart Salamandera**: Salamander automaticky ukládá a obnovuje otevřené panely. Chceme implementovat `SavePathForMainWindowTitle` / obnovení cesty, nebo zatím ne?
+1. **Maximální počet současně otevřených konexí**: **Libovolný** (bez umělého omezení, limitováno pouze pamětí a limity OS/serveru).
+2. **Přenosy mezi dvěma SFTP servery (server-to-server)**: **Odloženo do budoucna** (zaevidováno v [nice_to_have.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/nice_to_have.md) jako bod 12).
+3. **Persistence FS instance přes restart Salamandera**: **Odloženo do budoucna** (zaevidováno v [nice_to_have.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/nice_to_have.md) jako bod 13).
 
 ---
 

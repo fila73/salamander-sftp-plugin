@@ -46,3 +46,11 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Rozšíření přenosového dialogu o běh na pozadí (tlačítko 'Na pozadí' / 'Hide') a vyčlenění přenosů do dedikovaného pracovního vlákna (worker thread) s frontou úloh. Salamander panely zůstanou plně interaktivní i během stahování a nahrávání velkých objemů dat.
 - **Závislost**: Vyžaduje per-instance konexe (viz bod 9), aby bylo možné při přenosu paralelně procházet a provádět operace ve vzdálených panelech bez blokování jediného SSH/SFTP socketu.
 
+### 12. Přenosy mezi dvěma SFTP servery (Server-to-Server Copy)
+- **Popis**: Podpora přímého kopírování/přesouvání souborů mezi dvěma otevřenými SFTP panely (např. server A v levém panelu, server B v pravém panelu) pomocí transparentního dočasného lokálního bufferu (streaming download z A -> upload na B).
+- **Přínos**: Pohodlný přesun dat mezi vzdálenými servery bez nutnosti ručního mezistahování na disk uživatele.
+
+### 13. Persistence FS instance přes restart Salamandera
+- **Popis**: Podpora automatického obnovení otevřených SFTP panelů/tabů po restartu aplikace Salamander (implementace `SavePathForMainWindowTitle` a obnovení relace ze serializované cesty `sftp://user@host:port/path`).
+- **Přínos**: Zachování rozpracovaného stavu a otevřených složek po ukončení a novém spuštění správce souborů.
+
