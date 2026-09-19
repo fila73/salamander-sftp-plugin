@@ -1119,7 +1119,10 @@ void CPluginFSInterface::ShowTransferDialog(HWND parent)
 
 bool CPluginFSInterface::EnsureConnected(HWND parent)
 {
-    return SftpEnsureConnected(parent, Conn, Profile);
+    SftpTraceLog("CPluginFSInterface::EnsureConnected: calling SftpEnsureConnected");
+    bool r = SftpEnsureConnected(parent, Conn, Profile);
+    SftpTraceLog("CPluginFSInterface::EnsureConnected: SftpEnsureConnected returned %d", (int)r);
+    return r;
 }
 
 void CPluginFSInterface::HostPrefix(char* out, int outSize) const
@@ -1310,6 +1313,9 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
                                const char* userPart, char* cutFileName, BOOL* pathWasCut,
                                BOOL forceRefresh, int mode)
 {
+    SftpTraceLog("CPluginFSInterface::ChangePath: start currentFSNameIndex=%d fsName=%s userPart=%s mode=%d UseConnectData=%d",
+                 currentFSNameIndex, fsName ? fsName : "", userPart ? userPart : "(null)", mode, ConnectData.UseConnectData);
+
     if (userPart == NULL)
         userPart = "";
 

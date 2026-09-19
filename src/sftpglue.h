@@ -76,3 +76,7 @@ void SaveSftpConfigurationImmediately(HWND parent);
 
 // Wrap command line execution with custom sftp-server prefix (e.g. sudo -u hop)
 void WrapCommandWithSftpServerPrefix(const char* sftpServer, const char* rawCmd, char* outBuf, size_t outSize);
+
+// Diagnostic trace logging and heap validation
+void SftpTraceLog(const char* fmt, ...);
+void SftpCheckHeap(const char* where);

@@ -63,10 +63,13 @@ static const char* SftpKnownHostsPath()
 
 bool SftpEnsureConnected(HWND parent, CSftpConnection& conn, CSftpProfile& profile)
 {
+    SftpTraceLog("SftpEnsureConnected: start host=%s port=%d user=%s isConnected=%d",
+                 profile.Host, profile.Port, profile.User, (int)conn.IsConnected());
     if (conn.IsConnected())
         return true;
     if (!profile.Valid || profile.Host[0] == 0)
     {
+        SftpTraceLog("SftpEnsureConnected: invalid profile");
         SalamanderGeneral->SalMessageBox(parent, "No SFTP connection configured.\nOpen sftp: path and enter server.",
                                          LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return false;
@@ -74,22 +77,27 @@ bool SftpEnsureConnected(HWND parent, CSftpConnection& conn, CSftpProfile& profi
     static bool initialized = false;
     if (!initialized)
     {
+        SftpTraceLog("SftpEnsureConnected: performing one-time initialization");
         CSftpConnection::GlobalInit();
         CSftpConnection::SetKnownHostsFile(SftpKnownHostsPath());
         CSftpConnection::SetHostKeyCallback(SftpHostKeyCallback, nullptr);
         CSftpConnection::SetKbdPromptCallback(SftpKbdPromptCallback, nullptr);
         initialized = true;
+        SftpTraceLog("SftpEnsureConnected: one-time initialization complete");
     }
     CSftpConnection::SetEncoding(SftpEncoding); // filename encoding
+    SftpTraceLog("SftpEnsureConnected: calling conn.Connect");
     if (!conn.Connect(profile.Host, profile.Port, profile.User, profile.Password, profile.KeyFile,
                       profile.UseCompression, profile.Protocol, profile.ScpFallback, profile.SftpServer))
     {
+        SftpTraceLog("SftpEnsureConnected: conn.Connect failed: %s", conn.LastError());
         char buf[600];
         _snprintf_s(buf, _TRUNCATE, "Cannot connect to SFTP server %s:%d.\n\n%s",
                     profile.Host, profile.Port, conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, buf, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
+    SftpTraceLog("SftpEnsureConnected: conn.Connect succeeded!");
     return true;
 }
 
@@ -219,4 +227,50 @@ void WrapCommandWithSftpServerPrefix(const char* sftpServer, const char* rawCmd,
     {
         _snprintf_s(outBuf, outSize, _TRUNCATE, "%s sh -c '%s'", prefix.c_str(), escaped.c_str());
     }
+}
+
+void SftpTraceLog(const char* fmt, ...)
+{
+    static FILE* f = nullptr;
+    static bool triedOpen = false;
+    if (!triedOpen)
+    {
+        triedOpen = true;
+        const char* localApp = getenv("LOCALAPPDATA");
+        char path[MAX_PATH];
+        if (localApp && localApp[0])
+            _snprintf_s(path, sizeof(path), _TRUNCATE, "%s\\Open Salamander\\sftp_trace.log", localApp);
+        else
+            strcpy(path, "sftp_trace.log");
+        fopen_s(&f, path, "a");
+    }
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    _vsnprintf_s(buf, sizeof(buf), _TRUNCATE, fmt, args);
+    va_end(args);
+
+    BOOL heapOk = HeapValidate(GetProcessHeap(), 0, NULL);
+    char full[1280];
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    _snprintf_s(full, sizeof(full), _TRUNCATE, "[%02d:%02d:%02d.%03d] [%s] %s\n",
+                st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+                heapOk ? "HEAP_OK" : "HEAP_CORRUPT!", buf);
+
+    OutputDebugStringA(full);
+    if (f)
+    {
+        fputs(full, f);
+        fflush(f);
+    }
+    if (!heapOk)
+    {
+        MessageBoxA(NULL, full, "SFTP CRITICAL HEAP CORRUPTION", MB_OK | MB_ICONERROR);
+    }
+}
+
+void SftpCheckHeap(const char* where)
+{
+    SftpTraceLog("HeapCheck: %s", where);
 }

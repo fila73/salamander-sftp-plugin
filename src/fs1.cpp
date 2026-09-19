@@ -72,8 +72,10 @@ void ReleaseFS()
 CPluginFSInterfaceAbstract* WINAPI
 CPluginInterfaceForFS::OpenFS(const char* fsName, int fsNameIndex)
 {
+    SftpTraceLog("OpenFS: start fsName=%s fsNameIndex=%d", fsName ? fsName : "(null)", fsNameIndex);
     ActiveFSCount++;
     CPluginFSInterface* fs = new CPluginFSInterface;
+    SftpTraceLog("OpenFS: created CPluginFSInterface=%p", fs);
     ActiveFSList.push_back(fs);
     return fs;
 }
@@ -113,9 +115,26 @@ static int g_SelectedProfileIndex = -1;
 static bool FolderKnown(const char* name)
 {
     for (int i = 0; i < SftpFolderCount; i++)
-        if (strcmp(SftpFolders[i], name) == 0)
+        if (_stricmp(SftpFolders[i], name) == 0)
             return true;
     return false;
+}
+
+static void SaveSftpFoldersToRegistry()
+{
+    HKEY key = NULL;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\OpenSalamander\\Plugins\\sftp\\Folders", 0, NULL,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &key, NULL) == ERROR_SUCCESS)
+    {
+        RegSetValueExA(key, "Count", 0, REG_DWORD, (const BYTE*)&SftpFolderCount, sizeof(DWORD));
+        for (int i = 0; i < SftpFolderCount; i++)
+        {
+            char vname[32];
+            _snprintf_s(vname, _TRUNCATE, "Folder%d", i);
+            RegSetValueExA(key, vname, 0, REG_SZ, (const BYTE*)SftpFolders[i], (DWORD)strlen(SftpFolders[i]) + 1);
+        }
+        RegCloseKey(key);
+    }
 }
 
 static void FillSessionList(HWND HWindow)
@@ -890,11 +909,15 @@ void WINAPI
 CPluginInterfaceForFS::ExecuteChangeDriveMenuItem(int panel)
 {
     CALL_STACK_MESSAGE2("CPluginInterfaceForFS::ExecuteChangeDriveMenuItem(%d)", panel);
+    SftpTraceLog("ExecuteChangeDriveMenuItem: start panel=%d", panel);
     SalamanderGeneral->GetStdHistoryValues(SALHIST_CHANGEDIR, &History, &HistoryCount);
     while (1)
     {
-        if (SftpDialogBox(HLanguage, IDD_CONNECT, SalamanderGeneral->GetMsgBoxParent(),
-                          ConnectDlgProc, NULL) == IDOK)
+        SftpTraceLog("ExecuteChangeDriveMenuItem: opening Connect dialog");
+        INT_PTR dlgRes = SftpDialogBox(HLanguage, IDD_CONNECT, SalamanderGeneral->GetMsgBoxParent(),
+                                       ConnectDlgProc, NULL);
+        SftpTraceLog("ExecuteChangeDriveMenuItem: dialog returned %d", (int)dlgRes);
+        if (dlgRes == IDOK)
         {
             // repaint the main window so the user does not keep staring at stale content after the dialog
             UpdateWindow(SalamanderGeneral->GetMainWindowHWND());
@@ -904,55 +927,13 @@ CPluginInterfaceForFS::ExecuteChangeDriveMenuItem(int panel)
             ConnectData.UseConnectData = TRUE;
             lstrcpyn(ConnectData.UserPart, ConnectPath, MAX_PATH);
             int failReason;
+            SftpTraceLog("ExecuteChangeDriveMenuItem: calling ChangePanelPathToPluginFS, ConnectPath=%s", ConnectPath);
             BOOL changeRes = SalamanderGeneral->ChangePanelPathToPluginFS(panel, AssignedFSName, "", &failReason);
+            SftpTraceLog("ExecuteChangeDriveMenuItem: ChangePanelPathToPluginFS returned %d, failReason=%d", changeRes, failReason);
             // NOTE: on success it returns failReason==CHPPFR_SHORTERPATH (the user-part of the path is not empty)
             ConnectData.UseConnectData = FALSE;
             if (!changeRes && failReason == CHPPFR_INVALIDPATH)
                 continue; // repeat the prompt
-
-            /*
-      if (!SalamanderGeneral->ChangePanelPathToDisk(panel, ConnectPath, &failReason))
-      {
-        if (failReason == CHPPFR_INVALIDPATH) continue;  // repeat the prompt
-      }
-*/
-            /*
-      if (!SalamanderGeneral->ChangePanelPathToArchive(panel, ConnectPath, "", &failReason))
-      {
-        if (failReason == CHPPFR_INVALIDPATH || failReason == CHPPFR_INVALIDARCHIVE) continue;  // repeat the prompt
-      }
-*/
-            /*
-      if (LastDetachedFS != NULL &&
-          !SalamanderGeneral->ChangePanelPathToDetachedFS(panel, LastDetachedFS, &failReason))
-      {
-        // repeating the prompt makes no sense
-      }
-*/
-            /*
-      char buf[MAX_PATH];
-      if (SalamanderGeneral->GetLastWindowsPanelPath(panel, buf, MAX_PATH))
-      {
-        if (!SalamanderGeneral->ChangePanelPathToDisk(panel, buf, &failReason))
-        {
-          // repeating the prompt makes no sense
-        }
-      }
-*/
-            /*
-      if (!SalamanderGeneral->ChangePanelPathToRescuePathOrFixedDrive(panel, &failReason))
-      {
-        // repeating the prompt makes no sense
-      }
-*/
-            //      SalamanderGeneral->RefreshPanelPath(panel);
-            //      SalamanderGeneral->PostRefreshPanelPath(panel);
-            /*
-      if (LastDetachedFS != NULL)
-      {
-        SalamanderGeneral->CloseDetachedFS(SalamanderGeneral->GetMsgBoxParent(), LastDetachedFS);
-      }
-*/
         }
         break;
     }

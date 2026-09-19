@@ -64,6 +64,12 @@
 static LIBSSH2_ALLOC_FUNC(ssh2_default_alloc)
 {
     (void)abstract;
+#ifdef _WIN32
+    if (!HeapValidate(GetProcessHeap(), 0, NULL)) {
+        OutputDebugStringA("SFTP: HEAP CORRUPT BEFORE malloc in ssh2_default_alloc!\n");
+        MessageBoxA(NULL, "HEAP CORRUPT BEFORE malloc in ssh2_default_alloc!", "SFTP ERROR", MB_OK | MB_ICONERROR);
+    }
+#endif
     return malloc(count);
 }
 

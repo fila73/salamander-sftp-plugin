@@ -74,14 +74,21 @@ CSftpConnection::~CSftpConnection() { Disconnect(); }
 // bound only after this call.
 static void LoadBundledLibssh2()
 {
+    SftpTraceLog("LoadBundledLibssh2: start");
     HMODULE self = nullptr;
     if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                             (LPCSTR)&LoadBundledLibssh2, &self) ||
         self == nullptr)
+    {
+        SftpTraceLog("LoadBundledLibssh2: GetModuleHandleExA failed");
         return;
+    }
     char path[MAX_PATH];
     if (GetModuleFileNameA(self, path, MAX_PATH) == 0)
+    {
+        SftpTraceLog("LoadBundledLibssh2: GetModuleFileNameA failed");
         return;
+    }
     char* slash = strrchr(path, '\\');
     if (slash == nullptr)
         return;
@@ -90,21 +97,31 @@ static void LoadBundledLibssh2()
     for (int i = 0; i < 3; i++)
     {
         strcpy(slash + 1, dlls[i]);
-        LoadLibraryExA(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+        HMODULE h = LoadLibraryExA(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+        SftpTraceLog("LoadBundledLibssh2: loaded %s -> %p", path, h);
     }
 }
 
 bool CSftpConnection::GlobalInit()
 {
+    SftpTraceLog("CSftpConnection::GlobalInit: start");
     LoadBundledLibssh2();
+    SftpTraceLog("CSftpConnection::GlobalInit: after LoadBundledLibssh2");
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+    {
+        SftpTraceLog("CSftpConnection::GlobalInit: WSAStartup failed");
         return false;
-    return libssh2_init(0) == 0;
+    }
+    SftpTraceLog("CSftpConnection::GlobalInit: after WSAStartup, before libssh2_init");
+    int rc = libssh2_init(0);
+    SftpTraceLog("CSftpConnection::GlobalInit: after libssh2_init rc=%d", rc);
+    return rc == 0;
 }
 
 void CSftpConnection::GlobalExit()
 {
+    SftpTraceLog("CSftpConnection::GlobalExit: calling libssh2_exit and WSACleanup");
     libssh2_exit();
     WSACleanup();
 }
@@ -122,11 +139,13 @@ void CSftpConnection::SetError(const char* ctx)
     else
         _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%s", ctx);
     ErrorMsg = buf;
+    SftpTraceLog("CSftpConnection::SetError: %s", ErrorMsg.c_str());
 }
 
 bool CSftpConnection::Connect(const char* host, int port, const char* user, const char* password, const char* keyFile,
                               bool useCompression, int protocol, bool scpFallback, const char* sftpServer)
 {
+    SftpTraceLog("CSftpConnection::Connect: start host=%s port=%d user=%s", host ? host : "", port, user ? user : "");
     Disconnect();
     ScpMode = false;
 
@@ -138,17 +157,21 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     if (getaddrinfo(host, portstr, &hints, &res) != 0 || !res)
     {
         ErrorMsg = "Cannot resolve hostname.";
+        SftpTraceLog("CSftpConnection::Connect: Cannot resolve hostname");
         return false;
     }
+    SftpTraceLog("CSftpConnection::Connect: hostname resolved");
     Sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (Sock == INVALID_SOCKET || connect(Sock, res->ai_addr, (int)res->ai_addrlen) != 0)
     {
         ErrorMsg = "Cannot establish TCP connection.";
+        SftpTraceLog("CSftpConnection::Connect: TCP connect failed");
         freeaddrinfo(res);
         Disconnect();
         return false;
     }
     freeaddrinfo(res);
+    SftpTraceLog("CSftpConnection::Connect: TCP connected, sock=%llu", (unsigned long long)Sock);
 
     // Enable TCP keepalive to prevent NAT / firewall timeouts during idle
     BOOL optval = TRUE;
@@ -159,10 +182,12 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     ka.keepaliveinterval = 5000; // probe interval 5s
     DWORD bytesReturned = 0;
     WSAIoctl(Sock, SIO_KEEPALIVE_VALS, &ka, sizeof(ka), NULL, 0, &bytesReturned, NULL, NULL);
+    SftpTraceLog("CSftpConnection::Connect: keepalive configured");
 
     Session = libssh2_session_init();
-    if (!Session) { ErrorMsg = "libssh2_session_init failed."; Disconnect(); return false; }
+    if (!Session) { ErrorMsg = "libssh2_session_init failed."; SftpTraceLog("CSftpConnection::Connect: libssh2_session_init failed"); Disconnect(); return false; }
     libssh2_session_set_blocking(Session, 1);
+    SftpTraceLog("CSftpConnection::Connect: libssh2_session_init ok, session=%p", Session);
 
     // optional zlib compression (prefer, but allow without compression)
     if (useCompression)
@@ -171,13 +196,17 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
         libssh2_session_method_pref(Session, LIBSSH2_METHOD_COMP_SC, "zlib@openssh.com,zlib,none");
     }
 
+    SftpTraceLog("CSftpConnection::Connect: calling libssh2_session_handshake");
     if (libssh2_session_handshake(Session, Sock)) { SetError("SSH handshake"); Disconnect(); return false; }
+    SftpTraceLog("CSftpConnection::Connect: libssh2_session_handshake ok");
 
     // Enable SSH keepalive (every 10s, want_reply = 0 to avoid SSH_MSG_REQUEST_FAILURE from OpenSSH)
     libssh2_keepalive_config(Session, 0, 10);
 
     // host key verification (known_hosts + user prompt)
+    SftpTraceLog("CSftpConnection::Connect: calling VerifyHostKey");
     if (!VerifyHostKey(host, port)) { Disconnect(); return false; }
+    SftpTraceLog("CSftpConnection::Connect: VerifyHostKey ok");
 
     // authentication: key / password / keyboard-interactive
     if (!Authenticate(user, password, keyFile)) { Disconnect(); return false; }
