@@ -34,9 +34,10 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Volba chování při práci se symlinky – možnost stahovat cíl odkazu (dereference) nebo zachovat / ignorovat odkaz.
 - **Přínos**: Větší kontrola nad přenosem složitých Linuxových stromů.
 
-### 9. Souběžné vícenásobné konexe (Per-instance CPluginFSInterface)
+### 9. Souběžné vícenásobné konexe (Per-instance CPluginFSInterface) [HOTOVO – v1.3.0]
 - **Popis**: Převést `CSftpConnection` a `CSftpProfile` z globálního singletonu na členské objekty `CPluginFSInterface` (podle vzoru vestavěného FTP pluginu v Salamanderu).
-- **Přínos**: Umožní mít současně otevřené 2 a více různých SFTP serverů (např. v levém a pravém panelu, případně v různých tabech) a přenášet soubory mezi servery.
+- **Stav**: Kompletně dokončeno (Kroky 9.1 až 9.6). Každá instance FS panelu vlastní své nezávislé SSH spojení `Conn`, profil `Profile`, per-instance keepalive timer a instanční progress callbacky. Odstraněn globální singleton `SftpConn`.
+- **Přínos**: Umožňuje mít současně otevřené 2 a více různých SFTP serverů (např. v levém a pravém panelu, případně v různých tabech) bez vzájemného ovlivňování.
 
 ### 10. Barevné štítky profilů pro taby (Server Color Tags)
 - **Popis**: Možnost přiřadit v nastavení připojení barvu profilu (např. červená pro produkci, oranžová pro staging, zelená pro dev/test) a při otevření relace automaticky obarvit příslušný tab v Samandarinu.

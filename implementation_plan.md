@@ -77,7 +77,7 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ---
 
-### Krok 9.2 – Přepojení všech referencí `SftpConn` / `SftpProfile` na instanční členské proměnné
+### Krok 9.2 – Přepojení všech referencí `SftpConn` / `SftpProfile` na instanční členské proměnné [DOKONČENO]
 
 **Cíl**: Všechna místa v `fs2.cpp`, `fs1.cpp`, `sftpglue.cpp`, `menu.cpp` a `dialogs.cpp`, kde se přistupuje ke globálním `SftpConn` a `SftpProfile`, přesměrovat na `this->Conn` / `this->Profile` (v metodách `CPluginFSInterface`) nebo na `fs->Conn` / `fs->Profile` (v externích funkcích, kde je FS předán jako parametr).
 
@@ -102,7 +102,7 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ---
 
-### Krok 9.3 – Inicializace profilu v `ChangePath` a `OpenFS`
+### Krok 9.3 – Inicializace profilu v `ChangePath` a `OpenFS` [DOKONČENO]
 
 **Cíl**: Při otevření nového FS panelu se profil korektně zkopíruje z globálního `ConnectData` do instančního `Profile`.
 
@@ -119,7 +119,7 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ---
 
-### Krok 9.4 – Keepalive timer per-instance
+### Krok 9.4 – Keepalive timer per-instance [DOKONČENO]
 
 **Cíl**: Každá FS instance registruje svůj vlastní keepalive timer.
 
@@ -131,7 +131,7 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ---
 
-### Krok 9.5 – Disconnect per-instance
+### Krok 9.5 – Disconnect per-instance [DOKONČENO]
 
 **Cíl**: Příkazy „Disconnect" (F12 / menu) odpojují pouze vybranou instanci, nikoli globální konexe.
 
@@ -143,9 +143,9 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 
 ---
 
-### Krok 9.6 – Instancování statických callbacků `CSftpConnection` (Progress, HostKey, Kbd)
+### Krok 9.6 – Instancování statických callbacků `CSftpConnection` (Progress, HostKey, Kbd) [DOKONČENO]
 
-**Cíl**: Callbacky `ProgressFn`, `HostKeyVerifyFn`, `KbdPromptFn` jsou nyní `static` v `CSftpConnection`. Pro paralelní konexe je to problém (sdílejí kontext). Zatím to funguje, protože Salamander volá vše v jednom UI vláknu, ale připravíme infrastrukturu.
+**Cíl**: Callbacky `ProgressFn`, `ProgressCtx`, `SetProgressCallback` přesunuty ze `static` na instanční (member) v `CSftpConnection`.
 
 #### [MODIFY] [sftpconn.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpconn.h)
 - `ProgressFn`, `ProgressCtx` přesunout ze `static` na instanční (member) proměnné
@@ -157,9 +157,9 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 - Inicializovat v konstruktoru
 
 #### [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
-- `SftpProgressBegin` a spol. volají `Conn.SetProgressCallback(...)` místo `CSftpConnection::SetProgressCallback(...)`
+- `SftpProgressBegin` a spol. volají `conn->SetProgressCallback(...)` místo `CSftpConnection::SetProgressCallback(...)`
 
-**Ověření**: Kompilace + jeden panel stahuje soubor s progress barem.
+**Ověření**: Kompilace + unit testy + panel stahuje soubor s progress barem.
 
 ---
 
