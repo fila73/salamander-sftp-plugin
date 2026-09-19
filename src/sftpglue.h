@@ -44,6 +44,23 @@ extern CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 extern int SftpProfileCount;
 extern char SftpDefaultSession[128]; // name of profile to auto-fill in connect dialog
 
+inline void SftpProfileFromSaved(CSftpProfile& dst, const CSftpSavedProfile& src)
+{
+    lstrcpynA(dst.Name, src.Name, sizeof(dst.Name));
+    lstrcpynA(dst.Host, src.Host, sizeof(dst.Host));
+    dst.Port = src.Port;
+    lstrcpynA(dst.User, src.User, sizeof(dst.User));
+    lstrcpynA(dst.Password, src.Password, sizeof(dst.Password));
+    lstrcpynA(dst.KeyFile, src.KeyFile, sizeof(dst.KeyFile));
+    lstrcpynA(dst.Path, src.Path, sizeof(dst.Path));
+    lstrcpynA(dst.SftpServer, src.SftpServer, sizeof(dst.SftpServer));
+    dst.UseCompression = src.UseCompression;
+    dst.Protocol = src.Protocol;
+    dst.ScpFallback = src.ScpFallback;
+    dst.ExecOnEnter = src.ExecOnEnter;
+    dst.Valid = true;
+}
+
 #define SFTP_MAX_FOLDERS 64
 extern char SftpFolders[SFTP_MAX_FOLDERS][128]; // folder names (including empty)
 extern int SftpFolderCount;

@@ -24,6 +24,7 @@
 #include <limits.h>
 #include <process.h>
 #include <commctrl.h>
+#include <uxtheme.h>
 #include <ostream>
 #include <vector>
 #include <string>

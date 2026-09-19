@@ -47,9 +47,10 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Rozšíření přenosového dialogu o běh na pozadí (tlačítko 'Na pozadí' / 'Background') a vyčlenění přenosů do dedikovaného pracovního vlákna (`CSftpTransferWorker`) s frontou úloh. Salamander panely zůstávají plně interaktivní i během stahování a nahrávání velkých objemů dat.
 - **Stav**: Kompletně dokončeno (Kroky 11.1 až 11.10). Dedikovaná worker SSH relace `WorkerConn`, fronta `CSftpTransferTask`, thread-safe stav `CSftpTransferState`, nemodální dialog s tlačítkem „Na pozadí", znovuzobrazení přes menu „Show Transfers...", automatické notifikace panelů Salamandera přes `PostChangeOnPathNotification`.
 
-### 12. Přenosy mezi dvěma SFTP servery (Server-to-Server Copy)
+### 12. Přenosy mezi dvěma SFTP servery (Server-to-Server Copy) [HOTOVO – v1.3.1]
 - **Popis**: Podpora přímého kopírování/přesouvání souborů mezi dvěma otevřenými SFTP panely (např. server A v levém panelu, server B v pravém panelu) pomocí transparentního dočasného lokálního bufferu (streaming download z A -> upload na B).
-- **Přínos**: Pohodlný přesun dat mezi vzdálenými servery bez nutnosti ručního mezistahování na disk uživatele.
+- **Stav**: Kompletně dokončeno. `CopyOrMoveFromFS` analyzuje cílovou URL (`sftp://user@host:port/path`), detekuje odlišný server, vyhledá aktivní profil v `InterfaceForFS.GetActiveFSList()` nebo `SftpProfiles`, naváže/použije cílové spojení `targetConn`, v dialogu zobrazuje odděleně `From: [HOP Test]` a `To: [HOP Stage]`, provede stažení do `%TEMP%` a nahrání na cílový server a následně odešle `PostChangeOnPathNotification` pro oba panely.
+- **Přínos**: Pohodlný přesun dat mezi vzdálenými servery bez nutnosti ručního mezistahování na disk uživatele a bez rizika nechtěného přepsání souborů na zdrojovém serveru.
 
 ### 13. Persistence FS instance přes restart Salamandera
 - **Popis**: Podpora automatického obnovení otevřených SFTP panelů/tabů po restartu aplikace Salamander (implementace `SavePathForMainWindowTitle` a obnovení relace ze serializované cesty `sftp://user@host:port/path`).

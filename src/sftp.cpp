@@ -432,9 +432,61 @@ NastyGoto:
    delete [] pbData ;
    return bResult ;
 }
-
-
 */
+
+void SftpInitDarkMode(CSalamanderGeneralAbstract* general)
+{
+    if (general == NULL)
+        return;
+    BOOL useDark = FALSE;
+    if (general->GetConfigParameter(SALCFG_USEWINDOWSDARKMODE, &useDark, sizeof(useDark), NULL))
+    {
+        PluginDarkMode_SetHostPolicyAvailable(TRUE, useDark);
+        if (useDark)
+        {
+            COLORREF fg = general->GetCurrentColor(SALCOL_ITEM_FG_NORMAL);
+            COLORREF bg = general->GetCurrentColor(SALCOL_ITEM_BK_NORMAL);
+            PluginDarkMode_SetHostColors(fg, bg);
+        }
+    }
+}
+
+void SftpApplyDarkModeToWindow(HWND hwnd)
+{
+    if (hwnd == NULL)
+        return;
+    SftpInitDarkMode(SalamanderGeneral);
+    PluginDarkMode_ApplyTitleBar(hwnd);
+    PluginDarkMode_ApplyListTreeThemeRecursive(hwnd);
+    if (PluginDarkMode_ShouldUseDark())
+    {
+        for (HWND child = GetWindow(hwnd, GW_CHILD); child != NULL; child = GetWindow(child, GW_HWNDNEXT))
+        {
+            char cls[64];
+            if (GetClassNameA(child, cls, sizeof(cls)) > 0 && _stricmp(cls, "Button") == 0)
+            {
+                LONG_PTR style = GetWindowLongPtr(child, GWL_STYLE);
+                LONG_PTR type = style & BS_TYPEMASK;
+                if (type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON)
+                {
+                    SetWindowTheme(child, L"DarkMode_Explorer", NULL);
+                }
+            }
+        }
+    }
+    else
+    {
+        for (HWND child = GetWindow(hwnd, GW_CHILD); child != NULL; child = GetWindow(child, GW_HWNDNEXT))
+        {
+            char cls[64];
+            if (GetClassNameA(child, cls, sizeof(cls)) > 0 && _stricmp(cls, "Button") == 0)
+            {
+                SetWindowTheme(child, NULL, NULL);
+            }
+        }
+    }
+}
+
 CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbstract* salamander)
 {
     // set SalamanderDebug for "dbg.h"
@@ -473,6 +525,7 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
 
     // obtain the general Salamander interface
     SalamanderGeneral = salamander->GetSalamanderGeneral();
+    SftpInitDarkMode(SalamanderGeneral);
 #ifdef USE_DARKMODELIB
     InitializeWinLibDarkMode(SalamanderGeneral);
 #endif // USE_DARKMODELIB

@@ -123,7 +123,7 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 #ifdef USE_DARKMODELIB
         WinLibApplyDarkMode(HWindow);
 #endif
-        PluginDarkMode_ApplyTitleBar(HWindow);
+        SftpApplyDarkModeToWindow(HWindow);
         // use the Salamander-styled progress bar
         ProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_PROGRESSBAR);
         if (ProgressBar == NULL)
@@ -142,8 +142,8 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         RefreshWinLibDarkModeFromHost();
         WinLibApplyDarkMode(HWindow);
 #endif
+        SftpApplyDarkModeToWindow(HWindow);
         PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam);
-        PluginDarkMode_ApplyTitleBar(HWindow);
         InvalidateRect(HWindow, NULL, TRUE);
         break;
     }
@@ -296,7 +296,7 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 #ifdef USE_DARKMODELIB
         WinLibApplyDarkMode(HWindow);
 #endif
-        PluginDarkMode_ApplyTitleBar(HWindow);
+        SftpApplyDarkModeToWindow(HWindow);
         ProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_PROGRESSBAR);
         if (ProgressBar == NULL)
         {
@@ -313,8 +313,8 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         RefreshWinLibDarkModeFromHost();
         WinLibApplyDarkMode(HWindow);
 #endif
+        SftpApplyDarkModeToWindow(HWindow);
         PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam);
-        PluginDarkMode_ApplyTitleBar(HWindow);
         InvalidateRect(HWindow, NULL, TRUE);
         break;
     }
@@ -392,6 +392,8 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     FS = NULL;
     IsBackground = FALSE;
     ConnName[0] = 0;
+    FromConnName[0] = 0;
+    ToConnName[0] = 0;
     NotifyTargetPath[0] = 0;
     NotifySourcePath[0] = 0;
     NotifyIsMove = FALSE;
@@ -410,9 +412,17 @@ CSftpTransferProgressDlg::~CSftpTransferProgressDlg()
 void CSftpTransferProgressDlg::SetConnName(const char* name)
 {
     if (name != NULL)
+    {
         lstrcpynA(ConnName, name, sizeof(ConnName));
+        if (FromConnName[0] == 0)
+            lstrcpynA(FromConnName, name, sizeof(FromConnName));
+        if (ToConnName[0] == 0)
+            lstrcpynA(ToConnName, name, sizeof(ToConnName));
+    }
     else
+    {
         ConnName[0] = 0;
+    }
 }
 
 void CSftpTransferProgressDlg::DetachWorker()
@@ -487,10 +497,23 @@ void CSftpTransferProgressDlg::SetNotifyPaths(const char* targetPath, const char
     NotifyIsMove = isMove;
 }
 
-void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes, const char* connName)
+void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath,
+                                               int totalFiles, unsigned __int64 totalExpectedBytes,
+                                               const char* connName, const char* toConnName)
 {
     if (connName != NULL && connName[0] != 0)
+    {
         SetConnName(connName);
+        lstrcpynA(FromConnName, connName, sizeof(FromConnName));
+    }
+    if (toConnName != NULL && toConnName[0] != 0)
+    {
+        lstrcpynA(ToConnName, toConnName, sizeof(ToConnName));
+    }
+    else if (FromConnName[0] != 0)
+    {
+        lstrcpynA(ToConnName, FromConnName, sizeof(ToConnName));
+    }
 
     IsUpload = upload;
     StartTick = GetTickCount();
@@ -504,9 +527,13 @@ void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPat
     FileProgressCache = 0;
     TotalProgressCache = 0;
 
-    const char* activeConn = ConnName[0] != 0 ? ConnName : NULL;
-    SftpFormatTransferPath(fromPath, !upload, FromPathCache, sizeof(FromPathCache), activeConn);
-    SftpFormatTransferPath(toPath, upload, ToPathCache, sizeof(ToPathCache), activeConn);
+    bool fromIsRemote = !upload || SftpIsPathRemote(fromPath);
+    bool toIsRemote = upload || SftpIsPathRemote(toPath);
+    const char* fromConn = (fromIsRemote && FromConnName[0] != 0) ? FromConnName : (fromIsRemote && ConnName[0] != 0 ? ConnName : NULL);
+    const char* toConn = (toIsRemote && ToConnName[0] != 0) ? ToConnName : (toIsRemote && ConnName[0] != 0 ? ConnName : NULL);
+
+    SftpFormatTransferPath(fromPath, fromIsRemote, FromPathCache, sizeof(FromPathCache), fromConn);
+    SftpFormatTransferPath(toPath, toIsRemote, ToPathCache, sizeof(ToPathCache), toConn);
 
     lstrcpynA(FileNameCache, "...", sizeof(FileNameCache));
     lstrcpynA(StatusCache, "Connecting...", sizeof(StatusCache));
@@ -833,15 +860,24 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
 #ifdef USE_DARKMODELIB
         WinLibApplyDarkMode(HWindow);
 #endif
-        PluginDarkMode_ApplyTitleBar(HWindow);
-        const char* connName = ConnName[0] != 0 ? ConnName : g_ProgressConnName;
-        if (connName[0] != 0)
+        SftpApplyDarkModeToWindow(HWindow);
+        const char* fromCName = FromConnName[0] != 0 ? FromConnName : ConnName;
+        const char* toCName = ToConnName[0] != 0 ? ToConnName : fromCName;
+        if (fromCName[0] != 0 || toCName[0] != 0)
         {
             char curTitle[128];
             if (GetWindowText(HWindow, curTitle, sizeof(curTitle)) > 0 && curTitle[0] != '[')
             {
                 char newTitle[256];
-                _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "[%s] %s", connName, curTitle);
+                if (fromCName[0] != 0 && toCName[0] != 0 && _stricmp(fromCName, toCName) != 0)
+                {
+                    _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "[%s -> %s] %s", fromCName, toCName, curTitle);
+                }
+                else
+                {
+                    const char* cname = fromCName[0] != 0 ? fromCName : toCName;
+                    _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "[%s] %s", cname, curTitle);
+                }
                 SetWindowText(HWindow, newTitle);
             }
         }
@@ -938,8 +974,8 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         RefreshWinLibDarkModeFromHost();
         WinLibApplyDarkMode(HWindow);
 #endif
+        SftpApplyDarkModeToWindow(HWindow);
         PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam);
-        PluginDarkMode_ApplyTitleBar(HWindow);
         InvalidateRect(HWindow, NULL, TRUE);
         break;
     }
@@ -1137,7 +1173,10 @@ static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 d
 
 static CSftpConnection* g_ProgConn = NULL;
 
-static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0, const char* connName = NULL, CSftpConnection* conn = NULL)
+static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL,
+                              int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0,
+                              const char* connName = NULL, CSftpConnection* conn = NULL,
+                              const char* toConnName = NULL)
 {
     if (connName != NULL)
         lstrcpynA(g_ProgressConnName, connName, sizeof(g_ProgressConnName));
@@ -1161,7 +1200,7 @@ static void SftpProgressBegin(HWND parent, bool upload = false, const char* from
     if (g_ProgDlg != NULL && g_ProgDlg->Create() != NULL)
     {
         SetForegroundWindow(g_ProgDlg->HWindow);
-        g_ProgDlg->SetOperationInfo(upload, fromPath, toPath, totalFiles, totalExpectedBytes);
+        g_ProgDlg->SetOperationInfo(upload, fromPath, toPath, totalFiles, totalExpectedBytes, connName, toConnName);
         g_OvrParent = g_ProgDlg->HWindow;
         if (g_ProgConn != NULL)
             g_ProgConn->SetProgressCallback(SftpProgressCallback, NULL);
@@ -3135,14 +3174,136 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
 
     if (!diskPath)
     {
-        // target is on SFTP (sftp://host/...) -> copy within server via temp file
-        char* up = strchr(target, ':');
-        char remoteTargetDir[MAX_PATH];
-        lstrcpyn(remoteTargetDir, SftpStripHost((up != NULL) ? up + 1 : target), MAX_PATH);
-        for (char* p = remoteTargetDir; *p; p++)
-            if (*p == '\\')
-                *p = '/';
+        // target is on SFTP (sftp://host/... or //host/... or /path)
+        const char* p = target;
+        while (_strnicmp(p, "sftp:", 5) == 0)
+            p += 5;
+
+        char targetHost[256] = "";
+        char targetUser[128] = "";
+        int targetPort = 0;
+        char remoteTargetDir[MAX_PATH] = "/";
+
+        if ((p[0] == '/' || p[0] == '\\') && (p[1] == '/' || p[1] == '\\'))
+        {
+            // Host specified: //user@host:port/path
+            const char* hostStart = p + 2;
+            const char* slash = hostStart;
+            while (*slash != 0 && *slash != '/' && *slash != '\\')
+                slash++;
+            int hLen = (int)(slash - hostStart);
+            if (hLen > 0 && hLen < (int)sizeof(targetHost))
+            {
+                char hostBuf[320];
+                memcpy(hostBuf, hostStart, hLen);
+                hostBuf[hLen] = 0;
+                char* at = strchr(hostBuf, '@');
+                char* hpart = hostBuf;
+                if (at != NULL)
+                {
+                    *at = 0;
+                    lstrcpynA(targetUser, hostBuf, sizeof(targetUser));
+                    hpart = at + 1;
+                }
+                char* colon = strchr(hpart, ':');
+                if (colon != NULL)
+                {
+                    *colon = 0;
+                    targetPort = atoi(colon + 1);
+                }
+                lstrcpynA(targetHost, hpart, sizeof(targetHost));
+            }
+            if (*slash != 0)
+                lstrcpynA(remoteTargetDir, slash, sizeof(remoteTargetDir));
+        }
+        else
+        {
+            // Just a path (/path)
+            lstrcpynA(remoteTargetDir, p, sizeof(remoteTargetDir));
+        }
+
+        for (char* s = remoteTargetDir; *s; s++)
+            if (*s == '\\')
+                *s = '/';
         SftpNormalize(remoteTargetDir);
+
+        bool isSameServer = true;
+        if (targetHost[0] != 0)
+        {
+            if (_stricmp(targetHost, Profile.Host) != 0)
+                isSameServer = false;
+            else if (targetPort > 0 && targetPort != Profile.Port)
+                isSameServer = false;
+            else if (targetUser[0] != 0 && Profile.User[0] != 0 && _stricmp(targetUser, Profile.User) != 0)
+                isSameServer = false;
+        }
+
+        CSftpProfile targetProfile;
+        CSftpConnection* pTargetConn = NULL;
+        CSftpConnection localTargetConn;
+        char targetConnName[128] = "";
+        const char* sourceConnName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
+
+        if (isSameServer)
+        {
+            pTargetConn = &Conn;
+            lstrcpynA(targetConnName, sourceConnName, sizeof(targetConnName));
+        }
+        else
+        {
+            // Find active FS instance matching targetHost
+            const std::vector<CPluginFSInterfaceAbstract*>& fsList = InterfaceForFS.GetActiveFSList();
+            for (size_t i = 0; i < fsList.size(); i++)
+            {
+                CPluginFSInterface* pFS = static_cast<CPluginFSInterface*>(fsList[i]);
+                if (_stricmp(pFS->Profile.Host, targetHost) == 0 &&
+                    (targetUser[0] == 0 || _stricmp(pFS->Profile.User, targetUser) == 0) &&
+                    (targetPort == 0 || pFS->Profile.Port == targetPort))
+                {
+                    targetProfile = pFS->Profile;
+                    if (pFS->Conn.IsConnected())
+                        pTargetConn = &pFS->Conn;
+                    break;
+                }
+            }
+
+            // If profile not resolved from active FS, look in saved profiles
+            if (targetProfile.Host[0] == 0)
+            {
+                for (int i = 0; i < SftpProfileCount; i++)
+                {
+                    if (_stricmp(SftpProfiles[i].Host, targetHost) == 0 &&
+                        (targetUser[0] == 0 || _stricmp(SftpProfiles[i].User, targetUser) == 0) &&
+                        (targetPort == 0 || SftpProfiles[i].Port == targetPort))
+                    {
+                        SftpProfileFromSaved(targetProfile, SftpProfiles[i]);
+                        break;
+                    }
+                }
+            }
+
+            if (targetProfile.Host[0] == 0)
+            {
+                lstrcpynA(targetProfile.Host, targetHost, sizeof(targetProfile.Host));
+                if (targetUser[0] != 0)
+                    lstrcpynA(targetProfile.User, targetUser, sizeof(targetProfile.User));
+                targetProfile.Port = targetPort > 0 ? targetPort : 22;
+                targetProfile.Valid = true;
+            }
+
+            const char* tcn = targetProfile.Name[0] != 0 ? targetProfile.Name : targetProfile.Host;
+            lstrcpynA(targetConnName, tcn, sizeof(targetConnName));
+
+            if (pTargetConn == NULL || !pTargetConn->IsConnected())
+            {
+                if (!SftpEnsureConnected(parent, localTargetConn, targetProfile))
+                {
+                    cancelOrHandlePath = TRUE;
+                    return TRUE;
+                }
+                pTargetConn = &localTargetConn;
+            }
+        }
 
         char tmpDir[MAX_PATH];
         GetTempPath(MAX_PATH, tmpDir);
@@ -3153,8 +3314,8 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         BOOL isDirF = FALSE;
         BOOL okF = TRUE;
         const CFileData* ff;
-        const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
-        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF, 0, connName, &Conn);
+
+        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF, 0, sourceConnName, pTargetConn, targetConnName);
         while (1)
         {
             if (SftpIsCancelled())
@@ -3172,7 +3333,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
             lstrcpyn(tmpItem, tmpDir, 2 * MAX_PATH);
             SalamanderGeneral->SalPathAppend(tmpItem, ff->Name, 2 * MAX_PATH);
             BOOL step = SftpDownloadRecursive(Conn, src, tmpItem, isDirF != 0) &&
-                        SftpUploadRecursive(Conn, tmpItem, dst, isDirF != 0);
+                        SftpUploadRecursive(*pTargetConn, tmpItem, dst, isDirF != 0);
             LocalDeleteRecursive(tmpItem, isDirF != 0); // cleanup temp
             if (!step)
             {
@@ -3182,7 +3343,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                     break;
                 }
                 char eb[700];
-                _snprintf_s(eb, _TRUNCATE, "Error copying \"%s\":\n%s\n\nContinue?", ff->Name, Conn.LastError());
+                _snprintf_s(eb, _TRUNCATE, "Error copying \"%s\":\n%s\n\nContinue?", ff->Name, pTargetConn->LastError());
                 if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
                 {
                     okF = FALSE;
@@ -3195,8 +3356,22 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                 break;
         }
         SftpProgressEnd();
-        char fsfull2[MAX_PATH + 32];
-        _snprintf_s(fsfull2, _TRUNCATE, "%s:%s", fsName, remoteTargetDir);
+        if (pTargetConn == &localTargetConn)
+        {
+            localTargetConn.Disconnect();
+        }
+
+        char fsfull2[MAX_PATH + 64];
+        if (!isSameServer)
+        {
+            char prefix[320];
+            SftpHostPrefix(targetProfile, prefix, sizeof(prefix));
+            _snprintf_s(fsfull2, sizeof(fsfull2), _TRUNCATE, "%s:%s%s", fsName, prefix, remoteTargetDir);
+        }
+        else
+        {
+            _snprintf_s(fsfull2, sizeof(fsfull2), _TRUNCATE, "%s:%s", fsName, remoteTargetDir);
+        }
         SalamanderGeneral->PostChangeOnPathNotification(fsfull2, FALSE);
         if (!copy)
             SalamanderGeneral->PostChangeOnPathNotification(Path, TRUE);

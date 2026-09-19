@@ -40,6 +40,9 @@ void ReleaseViewer();
 BOOL InitFS();
 void ReleaseFS();
 
+void SftpInitDarkMode(CSalamanderGeneralAbstract* general);
+void SftpApplyDarkModeToWindow(HWND hwnd);
+
 // FS name assigned by Salamander after the plugin loads
 extern char AssignedFSName[MAX_PATH];
 extern int AssignedFSNameLen;
@@ -532,6 +535,8 @@ protected:
     CPluginFSInterface* FS;
     BOOL IsBackground;
     char ConnName[128];
+    char FromConnName[128];
+    char ToConnName[128];
     char NotifyTargetPath[MAX_PATH * 2];
     char NotifySourcePath[MAX_PATH * 2];
     BOOL NotifyIsMove;
@@ -541,7 +546,7 @@ public:
     virtual ~CSftpTransferProgressDlg();
 
     void SetConnName(const char* name);
-    void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes, const char* connName = NULL);
+    void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes = 0, const char* connName = NULL, const char* toConnName = NULL);
     void SetNotifyPaths(const char* targetPath, const char* sourcePath, BOOL isMove);
     void SetCurrentFile(const char* fileName, unsigned __int64 fileSize);
     void UpdateFileProgress(unsigned __int64 done, unsigned __int64 total);

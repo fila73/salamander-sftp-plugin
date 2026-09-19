@@ -235,4 +235,56 @@ Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolov
   - `1` = Vždy odpojit.
   - `2` = Vždy ponechat na pozadí (Detached FS).
 
+---
+
+## 11. Tmavý režim (Dark Mode) pro dialogy pluginu
+
+Salamander od verze 5.0 integruje celoaplikační tmavý režim řízený přes konfigurační parametr `SALCFG_USEWINDOWSDARKMODE`. Pro správné zobrazení dialogů pluginu v tmavém i světlém režimu platí následující pravidla:
+
+1. **Inicializace stavu hostitele (`SftpInitDarkMode`)**:
+   - Helper `plugindarkmode.cpp` vyžaduje explicitní informaci o politice hostitele:
+     ```cpp
+     DWORD useDark = 0;
+     if (general->GetConfigParameter(SALCFG_USEWINDOWSDARKMODE, &useDark, sizeof(useDark), NULL))
+     {
+         PluginDarkMode_SetHostPolicyAvailable(TRUE, useDark ? TRUE : FALSE);
+         COLORREF fg = general->GetCurrentColor(SALCOL_ITEM_FG_NORMAL);
+         COLORREF bg = general->GetCurrentColor(SALCOL_ITEM_BK_NORMAL);
+         PluginDarkMode_SetHostColors(fg, bg);
+     }
+     ```
+2. **Aplikace na dialogové okno (`SftpApplyDarkModeToWindow`)**:
+   - Při `WM_INITDIALOG` a při změně motivu (`WM_THEMECHANGED`, `WM_SETTINGCHANGE`) se volá pomocná funkce:
+     - `PluginDarkMode_ApplyTitleBar(hwnd)` – zajistí tmavý titulek okna Windows (DWM).
+     - `PluginDarkMode_ApplyListTreeThemeRecursive(hwnd)` – nastaví tmavý režim pro podřízené ovládací prvky.
+     - Pro tlačítka typu `BS_PUSHBUTTON` / `BS_DEFPUSHBUTTON` je v tmavém režimu nutné explicitně zavolat `SetWindowTheme(child, L"DarkMode_Explorer", NULL);`, aby tlačítka převzala moderní tmavý vizuální styl systému Windows namísto bílého rámečku.
+3. **Obsluha barev v dialogové proceduře**:
+   - Ve zprávách `WM_CTLCOLORDLG`, `WM_CTLCOLORSTATIC` a `WM_CTLCOLORBTN` se předává řízení do `PluginDarkMode_HandleCtlColor(uMsg, (HDC)wParam, (HWND)lParam)`. Pokud vrátí nenulový štětec `HBRUSH`, dialogová procedura jej vrátí jako výsledek (`(INT_PTR)hbr`).
+
+---
+
+## 12. Přenosy mezi servery (Server-to-Server Copy)
+
+Při operacích přenosu v `CPluginFSInterface::CopyOrMoveFromFS` dochází k vyhodnocení cílové cesty:
+1. **Lokální disk**: Cíl začíná písmenem jednotky (`C:\...`) nebo `\\UNC\`. Spouští se asynchronní download z SFTP na lokální disk.
+2. **Stejný SFTP server**: Cíl je virtuální cesta začínající `sftp:` a cíl ukazuje na tentýž hostitel a port jako aktivní panel (`Profile.Host`). Provádí se server-side kopírování/přesun v rámci jednoho spojení.
+3. **Odlišný SFTP server (Server-to-Server)**:
+   - Cíl má tvar `sftp://user@remotehost:port/path` nebo `//user@remotehost:port/path` s odlišným serverem než `this->Profile.Host`.
+   - **Vyhledání cílového připojení**:
+     - Plugin prohledá aktivní FS panely přes `InterfaceForFS.GetActiveFSList()`. Pokud nalezne odpovídající instanci se stejným hostitelem a uživatelem, převezme její aktivní profil i otevřené spojení `pTargetConn`.
+     - Pokud aktivní panel neexistuje, prohledá uložené profily `SftpProfiles`.
+     - V případě potřeby naváže spojení k cíli přes `SftpEnsureConnected(parent, localTargetConn, targetProfile)`.
+   - **Přenosový dialog a identifikace profilů**:
+     - Do dialogu `CSftpTransferProgressDlg` se předávají názvy zdrojového i cílového profilu:
+       - `From: [Zdrojový_Profil] /cesta/zdroj`
+       - `To: [Cílový_Profil] /cesta/cil`
+       - Titulek okna přenosu: `[[Zdroj] -> [Cíl]] SFTP Transfer`.
+   - **Streamovaný přenos**:
+     - Pro každou označenou položku se soubor stáhne ze zdroje (`this->Conn`) do bezpečného dočasného umístění v lokálním `%TEMP%` a ihned se nahraje na cílový server (`*pTargetConn`).
+     - Dočasný soubor je smazán.
+     - V případě přesunu (`!copy`) se zdrojový soubor po úspěšném nahrání na cíl smaže ze zdroje.
+   - **Dvoustranná notifikace změn**:
+     - Po dokončení se vyvolá `SalamanderGeneral->PostChangeOnPathNotification` pro zdrojovou i cílovou cestu, což zajistí okamžitou aktualizaci obou otevřených panelů.
+
+
 

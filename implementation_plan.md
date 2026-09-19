@@ -1,101 +1,111 @@
-# Implementace dotazu na odpojení při opuštění SFTP panelu (TryCloseOrDetach) & opravy přenosů [HOTOVO]
+# Tmavý režim (Dark Mode) pro dialogy & Přenosy mezi SFTP servery (Server-to-Server Copy)
 
-Tento plán navrhl a realizoval implementaci chování při opuštění SFTP panelu (změna disku, navigace pryč z virtuálního FS) podle osvědčeného vzoru oficiálního FTP pluginu v Open Salamandru, a následné opravy životního cyklu workeru a výpočtu progress baru.
+Tento plán řeší dva problémy zachycené na uživatelském screenshotu:
+1. **Světlý dialog v tmavém režimu**: Přenosový dialog `CSftpTransferProgressDlg` byl bílý, protože plugin nenačítal stav `SALCFG_USEWINDOWSDARKMODE` ze Salamandera a `plugindarkmode.cpp` proto zůstával ve výchozím světlém režimu.
+2. **Kopírování mezi servery**: Při kopírování mezi dvěma panely s různými SFTP servery (`[HOP Test]` -> `[HOP Stage]`) se cílová adresa ořízla na pouhý adresář a operace se nahrávala zpět na zdrojový server (vyvolalo se *Confirm File Overwrite* na témže souboru a dialog ukazoval `From: [HOP Test]` i `To: [HOP Test]`).
 
-## Stav realizace
-- **Stav**: Dokončeno, otestováno a nasazeno do `C:\Apps\samandarin\plugins\sftp\`.
-- **Výsledek**:
-  1. Uživatel dostane na výběr mezi odpojením (**Odpojit**), ponecháním spojení na pozadí (**Ponechat**) nebo zrušením změny disku (**Storno**). Spojení na pozadí (Detached FS) zůstává živé a je dostupné z nabídky Změna disku (`Alt+F1`/`Alt+F2`) s prefixem profilu `[NAS]`.
-  2. Opraveno nahrávání jazykových modulů z podsložky `plugins\sftp\lang\` a odstraněno hlášení „Error loading string".
-  3. Implementován reset čítačů a fronty workeru (`CSftpTransferWorker::Reset()`), aby se hodnoty nepřenášely do dalšího kopírování.
-  4. Celkový progress bar nyní přesně odráží objem přenesených dat (MB/kB) namísto pouhého počtu souborů.
-  5. Okno přenosu na pozadí lze kdykoliv vyvolat z menu Moduly -> SFTP -> Zobrazit přenosy... z libovolného panelu (výchozí zkratka byla uvolněna, aby nekolidovala se zkratkou Salamandera pro taby `Ctrl+Shift+T`).
-
-
+---
 
 ## Navržené změny
 
----
+### 1. Tmavý režim (Dark Mode) pro všechny dialogy pluginu
 
-### Jazykové zdroje (Resources)
-
-#### [MODIFY] [lang.rh](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang.rh)
-- Přidat definice ID textů:
-  - `IDS_CLOSECONINPANEL` – text dotazu při opuštění panelu
-  - `IDS_DISCONNECTBUTTON` – popisek tlačítka „Odpojit" / „Disconnect"
-  - `IDS_KEEPCONBUTTON` – popisek tlačítka „Ponechat" / „Keep"
-  - `IDS_ALWAYSREMEMBER` – popisek checkboxu „Zapamatovat tuto volbu"
-  - `IDS_WANTDISCONNECT` – text dotazu při nemožnosti detachovat („Opravdu se chcete odpojit?")
-
-#### [MODIFY] [lang_en.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_en.rc)
-- Přidat anglické texty:
-  - `IDS_CLOSECONINPANEL`: `"You are leaving SFTP server in panel. Do you wish to disconnect or to keep connection to this server?\n\nIf you choose Keep, you can access this connection from the Change Drive menu later."`
-  - `IDS_DISCONNECTBUTTON`: `"&Disconnect"`
-  - `IDS_KEEPCONBUTTON`: `"&Keep"`
-  - `IDS_ALWAYSREMEMBER`: `"&Remember this choice and do not ask again"`
-  - `IDS_WANTDISCONNECT`: `"Do you want to disconnect from SFTP server?"`
-
-#### [MODIFY] [lang_cs.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_cs.rc)
-- Přidat české texty:
-  - `IDS_CLOSECONINPANEL`: `"Opouštíte SFTP server v panelu. Přejete si odpojit spojení nebo jej ponechat aktivní?\n\nZvolíte-li Ponechat, spojení zůstane na pozadí a můžete se k němu kdykoliv vrátit z nabídky Změna disku (Alt+F1/Alt+F2)."`
-  - `IDS_DISCONNECTBUTTON`: `"&Odpojit"`
-  - `IDS_KEEPCONBUTTON`: `"&Ponechat"`
-  - `IDS_ALWAYSREMEMBER`: `"&Zapamatovat tuto volbu a příště se již neptat"`
-  - `IDS_WANTDISCONNECT`: `"Opravdu se chcete odpojit od SFTP serveru?"`
-
----
-
-### Konfigurace a perzistence
-
-#### [MODIFY] [sftpglue.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpglue.h) / [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h)
-- Přidat globální proměnnou konfigurace:
-  - `extern int SftpLeavePanelAction;`
-    - `0` = Ptát se (Ask - výchozí hodnota)
-    - `1` = Vždy odpojit (Always Disconnect)
-    - `2` = Vždy ponechat odpojené na pozadí (Always Keep / Detach)
-
-#### [MODIFY] [sftp.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.cpp)
-- Načítání v `LoadConfiguration`:
-  - `registry->GetValue(regKey, "LeavePanelAction", REG_DWORD, &SftpLeavePanelAction, sizeof(DWORD));`
-- Ukládání v `SaveConfiguration`:
-  - `registry->SetValue(regKey, "LeavePanelAction", REG_DWORD, &SftpLeavePanelAction, sizeof(DWORD));`
-
----
-
-### Obsluha opuštění panelu a nabídka Změna disku
+#### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h) & [sftp.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.cpp)
+- Zavést funkci `SftpInitDarkMode(CSalamanderGeneralAbstract* general)`:
+  - Dotázat se na `general->GetConfigParameter(SALCFG_USEWINDOWSDARKMODE, &useDark, sizeof(useDark), NULL)`.
+  - Pokud je hodnota k dispozici, zavolat:
+    ```cpp
+    PluginDarkMode_SetHostPolicyAvailable(TRUE, useDark);
+    COLORREF fg = general->GetCurrentColor(SALCOL_ITEM_FG_NORMAL);
+    COLORREF bg = general->GetCurrentColor(SALCOL_ITEM_BK_NORMAL);
+    PluginDarkMode_SetHostColors(fg, bg);
+    ```
+- Volat `SftpInitDarkMode(SalamanderGeneral)` v `CPluginInterface::Connect` a při inicializaci dialogů.
 
 #### [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
-- Přepracovat metodu `CPluginFSInterface::TryCloseOrDetach`:
-  1. Kontrola `forceClose`, `CalledFromDisconnectDialog`, `FSTRYCLOSE_UNLOADCLOSEFS`, `FSTRYCLOSE_UNLOADCLOSEDETACHEDFS`, `FSTRYCLOSE_PLUGINCLOSEDETACHEDFS` a `SalamanderGeneral->IsCriticalShutdown()` -> bez ptaní `detach = FALSE; return TRUE;`.
-  2. Pokud `reason == FSTRYCLOSE_CHANGEPATH`:
-     - Pokud `SftpLeavePanelAction == 1` (Vždy odpojit): `detach = FALSE; return TRUE;`.
-     - Pokud `SftpLeavePanelAction == 2 && canDetach` (Vždy ponechat): `detach = TRUE; return TRUE;`.
-     - Pokud `SftpLeavePanelAction == 0` (Ptát se):
-       - Je-li `canDetach == TRUE`:
-         Zobrazit `SalamanderGeneral->SalMessageBoxEx` s volbami **Odpojit** (`DIALOG_YES`), **Ponechat** (`DIALOG_NO`), **Storno** (`IDCANCEL`) a volitelným zapamatováním volby (`rememberChoice`).
-         - Při **Odpojit**: `detach = FALSE; ret = TRUE;`
-         - Při **Ponechat**: `detach = TRUE; ret = TRUE;` (spojení přejde do režimu Detached FS v paměti Salamandera)
-         - Při **Storno**: `return FALSE;` (změna cesty se zruší a uživatel zůstane v SFTP panelu)
-       - Není-li `canDetach == TRUE`:
-         Zobrazit dotaz `SalMessageBox` (Ano/Ne). Pokud Ne, `return FALSE`.
-- Vylepšit metodu `CPluginFSInterface::GetChangeDriveOrDisconnectItem`:
-  - Zahrnout název profilu `[NAS]` do textu položky pro nabídku Změna disku (Alt+F1/Alt+F2), např. `\tSFTP:[NAS] /cesta\t`, aby byla odpojená spojení na první pohled přehledná a identifikovatelná.
+- V dialogových procedurách `CSftpTransferProgressDlg::DialogProc`, `CDeleteProgressDlg::DialogProc` a `CCalcSizeProgressDlg::DialogProc`:
+  - V `WM_INITDIALOG`:
+    - Zavolat `SftpInitDarkMode(SalamanderGeneral)`.
+    - Zavolat `PluginDarkMode_ApplyTitleBar(HWindow)`.
+    - Zavolat `PluginDarkMode_ApplyListTreeThemeRecursive(HWindow)`.
+  - V `WM_THEMECHANGED` a `WM_SETTINGCHANGE`:
+    - Obnovit konfiguraci přes `SftpInitDarkMode(SalamanderGeneral)`.
+    - Zavolat `PluginDarkMode_HandleThemeMessage(HWindow, uMsg, lParam)`.
+    - Zavolat `PluginDarkMode_ApplyTitleBar(HWindow)`.
+    - `InvalidateRect(HWindow, NULL, TRUE)`.
+  - V `WM_CTLCOLORDLG`, `WM_CTLCOLORSTATIC`, `WM_CTLCOLORBTN`:
+    - Zachovat a zajistit korektní návrat štětce z `PluginDarkMode_HandleCtlColor`.
+
+---
+
+### 2. Podpora Server-to-Server Copy (přenos mezi 2 SFTP servery)
+
+#### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h)
+- Rozšířit `CSftpTransferProgressDlg`:
+  - Přidat podporu pro oddělená jména profilů pro zdroj i cíl:
+    ```cpp
+    char FromConnName[128];
+    char ToConnName[128];
+    void SetOperationInfo(bool upload, const char* fromPath, const char* toPath,
+                          int totalFiles, unsigned __int64 totalExpectedBytes,
+                          const char* fromConnName = NULL, const char* toConnName = NULL);
+    ```
+
+#### [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
+- Upravit `CSftpTransferProgressDlg::SetOperationInfo`:
+  - Používat `FromConnName` pro `fromPath` a `ToConnName` pro `toPath`.
+  - Dialog tak zobrazí:
+    - `From: [HOP Test] /opt/hop`
+    - `To: [HOP Stage] /opt/hop`
+- Přepracovat větev `!diskPath` v `CPluginFSInterface::CopyOrMoveFromFS`:
+  1. **Parsování cílové adresy**:
+     - Cíl může mít tvar `sftp:sftp://user@host:port/path` nebo `sftp://user@host:port/path` nebo `sftp:/path`.
+     - Analyzovat hostitele, uživatele a port cíle.
+  2. **Detekce cílového serveru**:
+     - Porovnat cílového hostitele s `this->Profile.Host`.
+     - Pokud se shoduje: provést kopírování/přesun v rámci téhož serveru (`this->Conn`).
+     - Pokud se liší:
+       - Prohledat `InterfaceForFS.GetActiveFSList()`, zda existuje aktivní panel pro cílový server.
+       - Pokud existuje, získat jeho profil `targetProf` (obsahující název např. `"HOP Stage"`, heslo/klíč apod.).
+       - Pokud neexistuje v aktivních panelech, vyhledat odpovídající profil v uložených profilech `SftpProfiles`.
+       - Navázat nebo použít spojení k cílovému serveru `targetConn`.
+  3. **Přenos položek**:
+     - Pro každý označený soubor/adresář:
+       - Stáhnout ze zdrojového serveru `this->Conn` do lokálního `%TEMP%`.
+       - Nahrát z lokálního `%TEMP%` na cílový server `targetConn`.
+       - Smazat dočasný lokální soubor.
+       - V případě přesunu (`!copy`) smazat zdroj ze zdrojového serveru `this->Conn`.
+  4. **Notifikace a refresh**:
+     - Po dokončení přenosu odeslat `PostChangeOnPathNotification` pro zdrojovou i cílovou cestu, aby se zaktualizovaly oba panely Salamandera.
 
 ---
 
 ## Verifikační plán
 
 ### Automatizované testy
-- Kompilace pluginu přes `mingw32-make -f Makefile.mingw CROSS_COMPILE=`.
-- Spuštění stávajících unit testů:
-  - `.\test\test_worker.exe`
-  - `.\test\test_path_hottrack.exe`
+- Spuštění `test_worker.exe` a `test_path_hottrack.exe` (100% pass).
+- Případné přidání unit testu pro parsování server-to-server URL a formátování From/To štítků.
 
-### Manuální ověření v Open Salamandru
-1. Otevřít SFTP panel a připojit se k serveru.
-2. V panelu zvolit změnu disku (např. stisk `Alt+F1` a výběr `C:`).
-3. Ověřit, že se zobrazí dialog s dotazem a třemi tlačítky:
-   - Kliknutí na **Storno** -> uživatel zůstane v SFTP panelu.
-   - Kliknutí na **Ponechat** -> panel se přepne na `C:`, ale spojení zůstane aktivní. V menu `Alt+F1` se objeví položka odpojeného SFTP serveru. Po kliknutí na ni se panel okamžitě vrátí do vzdálené složky bez nutnosti znovu zadávat heslo.
-   - Kliknutí na **Odpojit** -> spojení se korektně ukončí a odpojí.
-4. Ověřit fungování checkboxu pro zapamatování volby.
+### Manuální ověření
+1. **Ověření Dark Mode**:
+   - V Salamanderu s aktivním tmavým režimem vyvolat přenos (F5) nebo znovuzobrazit okno přenosu.
+   - Ověřit, že okno přenosu má tmavé pozadí, světlé čitelné texty a tmavě laděná tlačítka.
+2. **Ověření Server-to-Server Copy**:
+   - Otevřít v levém panelu server A (`[HOP Stage]`) a v pravém panelu server B (`[HOP Test]`).
+   - Zkopírovat soubor klávesou F5 z pravého do levého panelu.
+   - Ověřit, že v přenosovém dialogu je:
+     - `From: [HOP Test] /opt/hop`
+     - `To: [HOP Stage] /opt/hop`
+   - Ověřit, že se soubor skutečně přenesl na server A a nezpůsobil přepsání na serveru B.
+
+---
+
+## Stav realizace (Completed)
+- [x] Implementace Dark Mode policy handshake se Salamanderem (`SftpInitDarkMode`).
+- [x] Stylizace oken a podřízených tlačítek přes `SftpApplyDarkModeToWindow` a `DarkMode_Explorer`.
+- [x] Podpora oddělených profilů `FromConnName` a `ToConnName` v dialogu přenosu a formátování titulku.
+- [x] Rozpoznání a streaming Server-to-Server přenosů v `CPluginFSInterface::CopyOrMoveFromFS` s vyhledáním cílového profilu v aktivních relacích i uložených profilech.
+- [x] Rekompilace `sftp.spl`, úspěšný běh všech testů (100% pass).
+- [x] Nasazení binárek do `C:\Apps\samandarin\plugins\sftp\` i `lang\`.
+- [x] Aktualizace dokumentace (`jobs_done.md`, `nice_to_have.md`, `PLUGIN_DEV.md`, `README_CZ.md`, `README.md`, `implementation_plan.md`).
+
