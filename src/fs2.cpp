@@ -391,6 +391,7 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     Worker = NULL;
     FS = NULL;
     IsBackground = FALSE;
+    ConnName[0] = 0;
     NotifyTargetPath[0] = 0;
     NotifySourcePath[0] = 0;
     NotifyIsMove = FALSE;
@@ -404,6 +405,14 @@ CSftpTransferProgressDlg::~CSftpTransferProgressDlg()
         FS->ActiveTransferDlg = NULL;
     }
     FS = NULL;
+}
+
+void CSftpTransferProgressDlg::SetConnName(const char* name)
+{
+    if (name != NULL)
+        lstrcpynA(ConnName, name, sizeof(ConnName));
+    else
+        ConnName[0] = 0;
 }
 
 void CSftpTransferProgressDlg::DetachWorker()
@@ -437,7 +446,7 @@ static bool SftpIsPathRemote(const char* p)
     return true;
 }
 
-static void SftpFormatTransferPath(const char* inPath, bool forceRemote, char* outBuf, int outBufSize)
+static void SftpFormatTransferPath(const char* inPath, bool forceRemote, char* outBuf, int outBufSize, const char* connName = NULL)
 {
     if (inPath == NULL || inPath[0] == 0)
     {
@@ -447,7 +456,8 @@ static void SftpFormatTransferPath(const char* inPath, bool forceRemote, char* o
 
     char full[MAX_PATH * 2];
     bool isRemote = forceRemote || SftpIsPathRemote(inPath);
-    const char* connName = g_ProgressConnName;
+    if (connName == NULL || connName[0] == 0)
+        connName = g_ProgressConnName;
 
     if (isRemote && connName != NULL && connName[0] != 0 && inPath[0] != '[')
     {
@@ -477,8 +487,11 @@ void CSftpTransferProgressDlg::SetNotifyPaths(const char* targetPath, const char
     NotifyIsMove = isMove;
 }
 
-void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes)
+void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes, const char* connName)
 {
+    if (connName != NULL && connName[0] != 0)
+        SetConnName(connName);
+
     IsUpload = upload;
     StartTick = GetTickCount();
     FileStartTick = StartTick;
@@ -487,8 +500,9 @@ void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPat
     TotalDoneBytes = 0;
     CurrentFileIndex = 0;
 
-    SftpFormatTransferPath(fromPath, !upload, FromPathCache, sizeof(FromPathCache));
-    SftpFormatTransferPath(toPath, upload, ToPathCache, sizeof(ToPathCache));
+    const char* activeConn = ConnName[0] != 0 ? ConnName : NULL;
+    SftpFormatTransferPath(fromPath, !upload, FromPathCache, sizeof(FromPathCache), activeConn);
+    SftpFormatTransferPath(toPath, upload, ToPathCache, sizeof(ToPathCache), activeConn);
 
     lstrcpynA(FileNameCache, "...", sizeof(FileNameCache));
     lstrcpynA(StatusCache, "Connecting...", sizeof(StatusCache));
@@ -774,7 +788,7 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         WinLibApplyDarkMode(HWindow);
 #endif
         PluginDarkMode_ApplyTitleBar(HWindow);
-        const char* connName = g_ProgressConnName;
+        const char* connName = ConnName[0] != 0 ? ConnName : g_ProgressConnName;
         if (connName[0] != 0)
         {
             char curTitle[128];
@@ -3071,16 +3085,21 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
 
     CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
-    if (dlg == NULL || dlg->Create() == NULL)
+    if (dlg == NULL)
     {
-        if (dlg != NULL)
-            delete dlg;
+        cancelOrHandlePath = TRUE;
+        return FALSE;
+    }
+    dlg->SetConnName(connName);
+    if (dlg->Create() == NULL)
+    {
+        delete dlg;
         cancelOrHandlePath = TRUE;
         return FALSE;
     }
 
     SetForegroundWindow(dlg->HWindow);
-    dlg->SetOperationInfo(false, Path, target, totalFiles, 0);
+    dlg->SetOperationInfo(false, Path, target, totalFiles, 0, connName);
     dlg->SetNotifyPaths(target, Path, !copy);
 
     while (1)
@@ -3173,17 +3192,23 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
 
     CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
-    if (dlg == NULL || dlg->Create() == NULL)
+    if (dlg == NULL)
     {
-        if (dlg != NULL)
-            delete dlg;
+        if (invalidPathOrCancel != NULL)
+            *invalidPathOrCancel = TRUE;
+        return FALSE;
+    }
+    dlg->SetConnName(connName);
+    if (dlg->Create() == NULL)
+    {
+        delete dlg;
         if (invalidPathOrCancel != NULL)
             *invalidPathOrCancel = TRUE;
         return FALSE;
     }
 
     SetForegroundWindow(dlg->HWindow);
-    dlg->SetOperationInfo(true, sourcePath, remoteDir, totalFiles, 0);
+    dlg->SetOperationInfo(true, sourcePath, remoteDir, totalFiles, 0, connName);
 
     char fsfull[MAX_PATH + 32];
     _snprintf_s(fsfull, _TRUNCATE, "%s:%s", fsName, remoteDir);

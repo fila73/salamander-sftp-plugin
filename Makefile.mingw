@@ -82,6 +82,8 @@ ALL_OBJS = $(CPP_OBJS) src/sftp.res
 
 all: libcrypto-3-x64.a libssh2_static.a sftp.spl english.slg czech.slg
 
+$(CPP_OBJS): src/sftp.h src/sftpworker.h src/sftpglue.h src/sftpconn.h
+
 libcrypto-3-x64.a: libcrypto-3-x64.def
 	$(DLLTOOL) -m i386:x86-64 -d $< -l $@ -D libcrypto-3-x64.dll
 

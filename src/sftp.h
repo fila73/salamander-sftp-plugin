@@ -527,6 +527,7 @@ protected:
     CSftpTransferWorker* Worker;
     CPluginFSInterface* FS;
     BOOL IsBackground;
+    char ConnName[128];
     char NotifyTargetPath[MAX_PATH * 2];
     char NotifySourcePath[MAX_PATH * 2];
     BOOL NotifyIsMove;
@@ -535,7 +536,8 @@ public:
     CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
     virtual ~CSftpTransferProgressDlg();
 
-    void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes);
+    void SetConnName(const char* name);
+    void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes, const char* connName = NULL);
     void SetNotifyPaths(const char* targetPath, const char* sourcePath, BOOL isMove);
     void SetCurrentFile(const char* fileName, unsigned __int64 fileSize);
     void UpdateFileProgress(unsigned __int64 done, unsigned __int64 total);
