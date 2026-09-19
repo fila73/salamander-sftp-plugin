@@ -523,11 +523,15 @@ protected:
 
     CSftpTransferWorker* Worker;
     BOOL IsBackground;
+    char NotifyTargetPath[MAX_PATH * 2];
+    char NotifySourcePath[MAX_PATH * 2];
+    BOOL NotifyIsMove;
 
 public:
     CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
 
     void SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes);
+    void SetNotifyPaths(const char* targetPath, const char* sourcePath, BOOL isMove);
     void SetCurrentFile(const char* fileName, unsigned __int64 fileSize);
     void UpdateFileProgress(unsigned __int64 done, unsigned __int64 total);
     void UpdateTotalProgress(int fileIndex, unsigned __int64 totalBytesDone);

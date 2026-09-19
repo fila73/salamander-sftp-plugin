@@ -390,6 +390,9 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
 
     Worker = NULL;
     IsBackground = FALSE;
+    NotifyTargetPath[0] = 0;
+    NotifySourcePath[0] = 0;
+    NotifyIsMove = FALSE;
 }
 
 static bool SftpIsPathRemote(const char* p)
@@ -434,6 +437,19 @@ static void SftpFormatTransferPath(const char* inPath, bool forceRemote, char* o
     if (maxChars >= outBufSize)
         maxChars = outBufSize - 1;
     PathCompactPathExA(outBuf, full, maxChars, 0);
+}
+
+void CSftpTransferProgressDlg::SetNotifyPaths(const char* targetPath, const char* sourcePath, BOOL isMove)
+{
+    if (targetPath != NULL)
+        lstrcpynA(NotifyTargetPath, targetPath, sizeof(NotifyTargetPath));
+    else
+        NotifyTargetPath[0] = 0;
+    if (sourcePath != NULL)
+        lstrcpynA(NotifySourcePath, sourcePath, sizeof(NotifySourcePath));
+    else
+        NotifySourcePath[0] = 0;
+    NotifyIsMove = isMove;
 }
 
 void CSftpTransferProgressDlg::SetOperationInfo(bool upload, const char* fromPath, const char* toPath, int totalFiles, unsigned __int64 totalExpectedBytes)
@@ -792,6 +808,11 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
                 SalamanderGeneral->SalMessageBox(HWindow, snap.ErrorMsg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
             }
         }
+        if (NotifyTargetPath[0] != 0)
+            SalamanderGeneral->PostChangeOnPathNotification(NotifyTargetPath, TRUE);
+        if (NotifyIsMove && NotifySourcePath[0] != 0)
+            SalamanderGeneral->PostChangeOnPathNotification(NotifySourcePath, TRUE);
+
         EnableWindow(Parent, TRUE);
         DestroyWindow(HWindow);
         return TRUE;
@@ -1078,6 +1099,7 @@ CPluginFSInterface::CPluginFSInterface()
 
 CPluginFSInterface::~CPluginFSInterface()
 {
+    TransferWorker.Stop();
     Conn.Disconnect();
 }
 
@@ -2952,71 +2974,54 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     int totalFiles = focused ? 1 : (selectedFiles + selectedDirs);
     int index = 0;
     BOOL isDir = FALSE;
-    BOOL success = TRUE;
     const CFileData* f;
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
-    SftpProgressBegin(parent, false, Path, target, totalFiles, 0, connName, &Conn);
+
+    CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
+    if (dlg == NULL || dlg->Create() == NULL)
+    {
+        if (dlg != NULL)
+            delete dlg;
+        cancelOrHandlePath = TRUE;
+        return FALSE;
+    }
+
+    SetForegroundWindow(dlg->HWindow);
+    dlg->SetOperationInfo(false, Path, target, totalFiles, 0);
+    dlg->SetNotifyPaths(target, Path, !copy);
+
     while (1)
     {
-        if (SftpIsCancelled())
-        {
-            success = FALSE;
-            break;
-        }
         f = focused ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDir)
                     : SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir);
         if (f == NULL)
             break;
+
         char remote[MAX_PATH], local[2 * MAX_PATH];
         SftpJoin(Path, f->Name, remote, MAX_PATH);
         lstrcpyn(local, target, 2 * MAX_PATH);
         SalamanderGeneral->SalPathAppend(local, f->Name, 2 * MAX_PATH);
-        if (!SftpDownloadRecursive(Conn, remote, local, isDir != 0))
-        {
-            if (SftpIsCancelled())
-            {
-                success = FALSE;
-                break;
-            }
-            char eb[700];
-            _snprintf_s(eb, _TRUNCATE, "Error downloading \"%s\":\n%s\n\nContinue with other items?",
-                        f->Name, Conn.LastError());
-            if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
-                                                 MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
-            {
-                success = FALSE;
-                break;
-            }
-        }
+
+        CSftpTransferTask task;
+        task.TaskType = CSftpTransferTask::TaskDownload;
+        task.RemotePath = remote;
+        task.LocalPath = local;
+        task.FileSize = f->Size.Value;
+        task.ResumeOffset = 0;
+        task.IsDirectory = (isDir != 0);
+        task.DeleteSourceOnSuccess = (!copy);
+
+        TransferWorker.EnqueueTask(task);
+
         if (focused)
             break;
     }
-    SftpProgressEnd();
 
-    // move (Move): after successful copy, delete source on SFTP
-    if (success && !copy)
-    {
-        focused = (selectedFiles == 0 && selectedDirs == 0);
-        index = 0;
-        while (1)
-        {
-            f = focused ? SalamanderGeneral->GetPanelFocusedItem(panel, &isDir)
-                        : SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir);
-            if (f == NULL)
-                break;
-            char remote[MAX_PATH];
-            SftpJoin(Path, f->Name, remote, MAX_PATH);
-            SftpDeleteRecursive(Conn, remote, isDir != 0);
-            if (focused)
-                break;
-        }
-        SalamanderGeneral->PostChangeOnPathNotification(Path, TRUE);
-    }
+    dlg->AttachWorker(&TransferWorker);
+    TransferWorker.Start(Profile, dlg->HWindow);
 
-    if (success)
-        targetPath[0] = 0;
-    else
-        cancelOrHandlePath = TRUE;
+    targetPath[0] = 0;
+    cancelOrHandlePath = FALSE;
     return TRUE;
 }
 
@@ -3069,58 +3074,53 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     CQuadWord size;
     DWORD attr;
     FILETIME lastWrite;
-    BOOL success = TRUE;
     int totalFiles = (sourceFiles == 0 && sourceDirs == 0) ? 1 : (sourceFiles + sourceDirs);
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
-    SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles, 0, connName, &Conn);
+
+    CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
+    if (dlg == NULL || dlg->Create() == NULL)
+    {
+        if (dlg != NULL)
+            delete dlg;
+        if (invalidPathOrCancel != NULL)
+            *invalidPathOrCancel = TRUE;
+        return FALSE;
+    }
+
+    SetForegroundWindow(dlg->HWindow);
+    dlg->SetOperationInfo(true, sourcePath, remoteDir, totalFiles, 0);
+
+    char fsfull[MAX_PATH + 32];
+    _snprintf_s(fsfull, _TRUNCATE, "%s:%s", fsName, remoteDir);
+    dlg->SetNotifyPaths(fsfull, sourcePath, !copy);
+
     while ((name = next(NULL, 0, &dosName, &isDir, &size, &attr, &lastWrite, nextParam, NULL)) != NULL)
     {
-        if (SftpIsCancelled())
-        {
-            success = FALSE;
-            break;
-        }
-        // 'name' is relative name; full local path = sourcePath + name
         char local[2 * MAX_PATH];
         lstrcpyn(local, sourcePath, 2 * MAX_PATH);
         SalamanderGeneral->SalPathAppend(local, name, 2 * MAX_PATH);
-        // name without path for remote target
+
         const char* base = strrchr(name, '\\');
         base = (base != NULL) ? base + 1 : name;
         char remote[MAX_PATH];
         SftpJoin(remoteDir, base, remote, MAX_PATH);
-        if (!SftpUploadRecursive(Conn, local, remote, isDir != 0))
-        {
-            if (SftpIsCancelled())
-            {
-                success = FALSE;
-                break;
-            }
-            char eb[700];
-            _snprintf_s(eb, _TRUNCATE, "Error uploading \"%s\":\n%s\n\nContinue with other items?",
-                        base, Conn.LastError());
-            if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
-                                                 MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
-            {
-                success = FALSE;
-                break;
-            }
-            continue;
-        }
-        // move (Move): after successful upload, delete local source
-        if (!copy)
-            LocalDeleteRecursive(local, isDir != 0);
+
+        CSftpTransferTask task;
+        task.TaskType = CSftpTransferTask::TaskUpload;
+        task.LocalPath = local;
+        task.RemotePath = remote;
+        task.FileSize = size.Value;
+        task.ResumeOffset = 0;
+        task.IsDirectory = (isDir != 0);
+        task.DeleteSourceOnSuccess = (!copy);
+
+        TransferWorker.EnqueueTask(task);
     }
-    SftpProgressEnd();
 
-    // refresh panel with our FS path (if displayed)
-    char fsfull[MAX_PATH + 32];
-    _snprintf_s(fsfull, _TRUNCATE, "%s:%s", fsName, remoteDir);
-    SalamanderGeneral->PostChangeOnPathNotification(fsfull, FALSE);
+    dlg->AttachWorker(&TransferWorker);
+    TransferWorker.Start(Profile, dlg->HWindow);
 
-    if (!success && invalidPathOrCancel != NULL)
-        *invalidPathOrCancel = TRUE;
-    return success;
+    return TRUE;
 }
 
 // dialog for entering octal permissions (chmod)
