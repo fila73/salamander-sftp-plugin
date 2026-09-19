@@ -387,6 +387,9 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     TotalExpectedBytes = 0;
     CurrentFileIndex = 0;
     TotalFilesCount = 1;
+
+    Worker = NULL;
+    IsBackground = FALSE;
 }
 
 static bool SftpIsPathRemote(const char* p)
@@ -563,6 +566,87 @@ void CSftpTransferProgressDlg::UpdateTotalProgress(int fileIndex, unsigned __int
     ProgressCacheIsDirty = TRUE;
 }
 
+void CSftpTransferProgressDlg::AttachWorker(CSftpTransferWorker* worker)
+{
+    Worker = worker;
+    if (Worker != NULL && HWindow != NULL)
+    {
+        Worker->SetDlgHwnd(HWindow);
+    }
+}
+
+void CSftpTransferProgressDlg::UpdateFromWorker()
+{
+    if (Worker == NULL)
+        return;
+
+    CSftpTransferState snap;
+    Worker->GetStateSnapshot(snap);
+
+    if (snap.CurrentItemIndex > 0)
+        CurrentFileIndex = snap.CurrentItemIndex;
+    if (snap.TotalItemsCount > 0)
+        TotalFilesCount = snap.TotalItemsCount;
+
+    const char* curFile = IsUpload ? snap.CurrentLocalFile : snap.CurrentRemoteFile;
+    const char* base = strrchr(curFile, '\\');
+    const char* b2 = strrchr(curFile, '/');
+    if (b2 > base)
+        base = b2;
+    base = (base != NULL) ? base + 1 : curFile;
+    if (base[0] != 0)
+        lstrcpynA(FileNameCache, base, sizeof(FileNameCache));
+
+    FileDoneBytes = snap.CurrentFileDone;
+    FileTotalBytes = snap.CurrentFileTotal;
+
+    double speedMB = snap.BytesPerSec / 1048576.0;
+    char etaStr[64] = "";
+    if (speedMB > 0.01 && FileTotalBytes > FileDoneBytes)
+    {
+        unsigned __int64 remBytes = FileTotalBytes - FileDoneBytes;
+        int remSec = (int)((double)remBytes / snap.BytesPerSec);
+        if (remSec >= 3600)
+            _snprintf_s(etaStr, _TRUNCATE, " - ETA: %d:%02d:%02d", remSec / 3600, (remSec % 3600) / 60, remSec % 60);
+        else
+            _snprintf_s(etaStr, _TRUNCATE, " - ETA: %02d:%02d", remSec / 60, remSec % 60);
+    }
+
+    if (FileTotalBytes > 0)
+    {
+        if (FileTotalBytes >= 1048576)
+        {
+            _snprintf_s(StatusCache, _TRUNCATE, "%.1f / %.1f MB  (%.2f MB/s)%s",
+                        (double)FileDoneBytes / 1048576.0, (double)FileTotalBytes / 1048576.0, speedMB, etaStr);
+        }
+        else
+        {
+            _snprintf_s(StatusCache, _TRUNCATE, "%I64u / %I64u kB  (%.2f MB/s)%s",
+                        FileDoneBytes / 1024, FileTotalBytes / 1024, speedMB, etaStr);
+        }
+        FileProgressCache = (DWORD)(FileDoneBytes * 1000 / FileTotalBytes);
+    }
+    else
+    {
+        _snprintf_s(StatusCache, _TRUNCATE, "%I64u kB  (%.2f MB/s)", FileDoneBytes / 1024, speedMB);
+        FileProgressCache = 0;
+    }
+
+    if (TotalFilesCount > 1)
+    {
+        _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d", CurrentFileIndex, TotalFilesCount);
+        TotalProgressCache = (DWORD)(((CurrentFileIndex - 1) * 1000 + FileProgressCache) / TotalFilesCount);
+    }
+    else
+    {
+        TotalProgressCache = FileProgressCache;
+    }
+
+    TextCacheIsDirty = TRUE;
+    ProgressCacheIsDirty = TRUE;
+    FlushDataToControls();
+}
+
 void CSftpTransferProgressDlg::EnableCancel(BOOL enable)
 {
     if (HWindow != NULL)
@@ -663,7 +747,54 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
             DestroyWindow(HWindow);
             return FALSE;
         }
+        SetTimer(HWindow, 101, 100, NULL);
+        if (Worker != NULL)
+            Worker->SetDlgHwnd(HWindow);
         break;
+    }
+
+    case WM_TIMER:
+    {
+        if (wParam == 101)
+        {
+            if (Worker != NULL)
+                UpdateFromWorker();
+            else
+                FlushDataToControls();
+        }
+        return 0;
+    }
+
+    case WM_DESTROY:
+    {
+        KillTimer(HWindow, 101);
+        if (Worker != NULL)
+            Worker->SetDlgHwnd(NULL);
+        break;
+    }
+
+    case WM_APP_SFTP_WORKER_UPDATE:
+    {
+        UpdateFromWorker();
+        return TRUE;
+    }
+
+    case WM_APP_SFTP_WORKER_FINISHED:
+    {
+        if (Worker != NULL)
+        {
+            CSftpTransferState snap;
+            Worker->GetStateSnapshot(snap);
+            if (snap.HasError && snap.ErrorMsg[0] != 0 && !snap.Cancelled)
+            {
+                if (IsBackground)
+                    ShowWindow(HWindow, SW_SHOW);
+                SalamanderGeneral->SalMessageBox(HWindow, snap.ErrorMsg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
+            }
+        }
+        EnableWindow(Parent, TRUE);
+        DestroyWindow(HWindow);
+        return TRUE;
     }
 
     case WM_THEMECHANGED:
@@ -696,8 +827,17 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
 
     case WM_COMMAND:
     {
+        if (LOWORD(wParam) == IDB_BACKGROUND)
+        {
+            IsBackground = TRUE;
+            EnableWindow(Parent, TRUE);
+            ShowWindow(HWindow, SW_HIDE);
+            return TRUE;
+        }
         if (LOWORD(wParam) == IDCANCEL)
         {
+            if (Worker != NULL)
+                Worker->Cancel();
             if (!WantCancel)
             {
                 WantCancel = TRUE;

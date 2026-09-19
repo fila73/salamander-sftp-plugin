@@ -12,6 +12,7 @@
 #pragma once
 
 #include "sftpglue.h"
+#include "sftpworker.h"
 
 // if SFTP_QUIET is defined, keep message-box prompts to a minimum
 #define SFTP_QUIET
@@ -520,6 +521,9 @@ protected:
     int CurrentFileIndex;
     int TotalFilesCount;
 
+    CSftpTransferWorker* Worker;
+    BOOL IsBackground;
+
 public:
     CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
 
@@ -528,6 +532,10 @@ public:
     void UpdateFileProgress(unsigned __int64 done, unsigned __int64 total);
     void UpdateTotalProgress(int fileIndex, unsigned __int64 totalBytesDone);
     BOOL GetWantCancel();
+
+    void AttachWorker(CSftpTransferWorker* worker);
+    void UpdateFromWorker();
+    BOOL GetIsBackground() const { return IsBackground; }
 
 protected:
     virtual INT_PTR DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -646,6 +654,7 @@ public:
 
     CSftpConnection Conn;            // per-instance SSH/SFTP connection
     CSftpProfile    Profile;         // per-instance connection profile
+    CSftpTransferWorker TransferWorker; // background transfer worker
 
     CSftpConnection& GetConn() { return Conn; }
     CSftpProfile& GetProfile() { return Profile; }
