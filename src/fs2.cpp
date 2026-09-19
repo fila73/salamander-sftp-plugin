@@ -357,6 +357,8 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 // CSftpTransferProgressDlg
 //
 
+static char g_ProgressConnName[128] = "";
+
 CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin)
     : CCommonDialog(HLanguage, IDD_TRANSFERDLG, parent, origin)
 {
@@ -414,7 +416,7 @@ static void SftpFormatTransferPath(const char* inPath, bool forceRemote, char* o
 
     char full[MAX_PATH * 2];
     bool isRemote = forceRemote || SftpIsPathRemote(inPath);
-    const char* connName = SftpProfile.Name[0] != 0 ? SftpProfile.Name : SftpProfile.Host;
+    const char* connName = g_ProgressConnName;
 
     if (isRemote && connName != NULL && connName[0] != 0 && inPath[0] != '[')
     {
@@ -643,7 +645,7 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         WinLibApplyDarkMode(HWindow);
 #endif
         PluginDarkMode_ApplyTitleBar(HWindow);
-        const char* connName = SftpProfile.Name[0] != 0 ? SftpProfile.Name : SftpProfile.Host;
+        const char* connName = g_ProgressConnName;
         if (connName[0] != 0)
         {
             char curTitle[128];
@@ -814,26 +816,26 @@ static unsigned __int64 LocalMTime(const char* path)
 }
 
 // synchronization: should file be skipped? (same size and local is not older)
-static bool SyncSkipDownload(const char* remote, const char* local)
+static bool SyncSkipDownload(CSftpConnection& conn, const char* remote, const char* local)
 {
     if (GetFileAttributes(local) == INVALID_FILE_ATTRIBUTES)
         return false; // missing locally -> download
     unsigned __int64 lsize = LocalFileSize(local), rsize = 0;
     unsigned long perms, uid, gid, rmtime;
-    if (!SftpConn.StatFull(remote, rsize, perms, uid, gid, rmtime))
+    if (!conn.StatFull(remote, rsize, perms, uid, gid, rmtime))
         return false;
     if (lsize != rsize)
         return false; // different size -> download
     return LocalMTime(local) >= (unsigned __int64)rmtime; // same size and local is not older -> skip
 }
 
-static bool SyncSkipUpload(const char* local, const char* remote)
+static bool SyncSkipUpload(CSftpConnection& conn, const char* local, const char* remote)
 {
-    if (SftpConn.PathType(remote) != 1)
+    if (conn.PathType(remote) != 1)
         return false; // missing remotely -> upload
     unsigned __int64 lsize = LocalFileSize(local), rsize = 0;
     unsigned long perms, uid, gid, rmtime;
-    if (!SftpConn.StatFull(remote, rsize, perms, uid, gid, rmtime))
+    if (!conn.StatFull(remote, rsize, perms, uid, gid, rmtime))
         return false;
     if (lsize != rsize)
         return false;
@@ -859,8 +861,13 @@ static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 d
     return true;
 }
 
-static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0)
+static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0, const char* connName = NULL)
 {
+    if (connName != NULL)
+        lstrcpynA(g_ProgressConnName, connName, sizeof(g_ProgressConnName));
+    else
+        g_ProgressConnName[0] = 0;
+
     g_ProgMainWnd = parent;
     HWND pw;
     while ((pw = GetParent(g_ProgMainWnd)) != NULL && IsWindowEnabled(pw))
@@ -892,6 +899,7 @@ static void SftpProgressBegin(HWND parent, bool upload = false, const char* from
 static void SftpProgressEnd()
 {
     CSftpConnection::SetProgressCallback(NULL, NULL);
+    g_ProgressConnName[0] = 0;
     if (g_ProgDlg != NULL)
     {
         if (g_ProgDlg->GetWantCancel())
@@ -965,15 +973,15 @@ CPluginFSInterface::GetRootPath(char* userPart)
 }
 
 // "//user@host[:port]" for current profile (path prefix displayed)
-static void SftpHostPrefix(char* out, int outSize)
+static void SftpHostPrefix(const CSftpProfile& prof, char* out, int outSize)
 {
     char portpart[16] = "";
-    if (SftpProfile.Port != 0 && SftpProfile.Port != 22)
-        _snprintf_s(portpart, _TRUNCATE, ":%d", SftpProfile.Port);
-    if (SftpProfile.User[0] != 0)
-        _snprintf_s(out, outSize, _TRUNCATE, "//%s@%s%s", SftpProfile.User, SftpProfile.Host, portpart);
+    if (prof.Port != 0 && prof.Port != 22)
+        _snprintf_s(portpart, _TRUNCATE, ":%d", prof.Port);
+    if (prof.User[0] != 0)
+        _snprintf_s(out, outSize, _TRUNCATE, "//%s@%s%s", prof.User, prof.Host, portpart);
     else
-        _snprintf_s(out, outSize, _TRUNCATE, "//%s%s", SftpProfile.Host, portpart);
+        _snprintf_s(out, outSize, _TRUNCATE, "//%s%s", prof.Host, portpart);
 }
 
 // from "//user@host/path" returns pointer to start of remote path (after host); otherwise returns input
@@ -992,7 +1000,7 @@ static const char* SftpStripHost(const char* userPart)
 
 // if "//user@host[:port]/..." contains a different host than current profile, update profile
 // and force new connection (allows entering sftp://user@host/ directly in address bar)
-static void SftpParseHostInto(const char* userPart)
+static void SftpParseHostInto(CSftpProfile& prof, CSftpConnection& conn, const char* userPart)
 {
     if (userPart == NULL || (userPart[0] != '/' && userPart[0] != '\\') ||
         (userPart[1] != '/' && userPart[1] != '\\'))
@@ -1026,24 +1034,24 @@ static void SftpParseHostInto(const char* userPart)
     lstrcpyn(host, hostpart, sizeof(host));
     if (host[0] == 0)
         return;
-    if (_stricmp(host, SftpProfile.Host) != 0 || (user[0] != 0 && _stricmp(user, SftpProfile.User) != 0))
+    if (_stricmp(host, prof.Host) != 0 || (user[0] != 0 && _stricmp(user, prof.User) != 0))
     {
-        lstrcpyn(SftpProfile.Host, host, sizeof(SftpProfile.Host));
+        lstrcpyn(prof.Host, host, sizeof(prof.Host));
         if (user[0] != 0)
-            lstrcpyn(SftpProfile.User, user, sizeof(SftpProfile.User));
-        SftpProfile.Port = (port > 0) ? port : 22;
-        SftpProfile.Valid = true;
-        SftpProfile.Name[0] = 0;
+            lstrcpyn(prof.User, user, sizeof(prof.User));
+        prof.Port = (port > 0) ? port : 22;
+        prof.Valid = true;
+        prof.Name[0] = 0;
         for (int i = 0; i < SftpProfileCount; i++)
         {
-            if (_stricmp(SftpProfile.Host, SftpProfiles[i].Host) == 0 &&
-                (SftpProfile.User[0] == 0 || _stricmp(SftpProfile.User, SftpProfiles[i].User) == 0))
+            if (_stricmp(prof.Host, SftpProfiles[i].Host) == 0 &&
+                (prof.User[0] == 0 || _stricmp(prof.User, SftpProfiles[i].User) == 0))
             {
-                lstrcpyn(SftpProfile.Name, SftpProfiles[i].Name, sizeof(SftpProfile.Name));
+                lstrcpyn(prof.Name, SftpProfiles[i].Name, sizeof(prof.Name));
                 break;
             }
         }
-        SftpConn.Disconnect(); // different server -> new connection
+        conn.Disconnect(); // different server -> new connection
     }
 }
 
@@ -1051,7 +1059,7 @@ BOOL WINAPI
 CPluginFSInterface::GetCurrentPath(char* userPart)
 {
     char prefix[320];
-    SftpHostPrefix(prefix, sizeof(prefix));
+    SftpHostPrefix(Profile, prefix, sizeof(prefix));
     _snprintf_s(userPart, MAX_PATH, _TRUNCATE, "%s%s", prefix, Path[0] != 0 ? Path : "/");
     return TRUE;
 }
@@ -1060,7 +1068,7 @@ BOOL WINAPI
 CPluginFSInterface::GetFullName(CFileData& file, int isDir, char* buf, int bufSize)
 {
     char remote[MAX_PATH], prefix[320];
-    SftpHostPrefix(prefix, sizeof(prefix));
+    SftpHostPrefix(Profile, prefix, sizeof(prefix));
     if (isDir == 2) // up-dir
         SftpParent(Path, remote, MAX_PATH);
     else
@@ -1081,7 +1089,7 @@ CPluginFSInterface::GetFullFSPath(HWND parent, const char* fsName, char* path, i
         SftpJoin(Path[0] != 0 ? Path : "/", up, full, MAX_PATH);
     SftpNormalize(full);
     char prefix[320];
-    SftpHostPrefix(prefix, sizeof(prefix));
+    SftpHostPrefix(Profile, prefix, sizeof(prefix));
     success = (int)(strlen(full) + strlen(prefix) + strlen(fsName) + 1) < pathSize;
     if (success)
         sprintf(path, "%s:%s%s", fsName, prefix, full);
@@ -1129,10 +1137,15 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
     HWND parent = SalamanderGeneral->GetMsgBoxParent();
 
     // from address bar "sftp://user@host/" optionally switch to different server
-    if (!ConnectData.UseConnectData)
-        SftpParseHostInto(userPart);
+    if (ConnectData.UseConnectData)
+    {
+        Profile = ConnectData.Profile;
+        Profile.Valid = true;
+    }
+    else
+        SftpParseHostInto(Profile, Conn, userPart);
 
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
         return FALSE;
 
     // determine input path (without //host prefix)
@@ -1145,7 +1158,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
     if (path[0] == 0)
     {
         std::string home;
-        if (SftpConn.GetHomeDir(home) && !home.empty())
+        if (Conn.GetHomeDir(home) && !home.empty())
             lstrcpyn(path, home.c_str(), MAX_PATH);
         else
             strcpy(path, "/");
@@ -1168,7 +1181,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         if (SftpIsSamePath(path, parentPath) || SftpIsRoot(path))
         {
             char msg[2 * MAX_PATH];
-            _snprintf_s(msg, _TRUNCATE, "Cannot list directory:\n%s:%s\n%s", fsName, path, SftpConn.LastError());
+            _snprintf_s(msg, _TRUNCATE, "Cannot list directory:\n%s:%s\n%s", fsName, path, Conn.LastError());
             SalamanderGeneral->SalMessageBox(parent, msg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
             return FALSE;
         }
@@ -1180,7 +1193,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
     BOOL fileNameAlreadyCut = FALSE;
     while (1)
     {
-        int type = SftpConn.PathType(path); // 0=not found,1=file,2=directory
+        int type = Conn.PathType(path); // 0=not found,1=file,2=directory
         if (type == 2)
         {
             lstrcpyn(Path, path, MAX_PATH);
@@ -1222,17 +1235,17 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
                                     int& iconsType, BOOL forceRefresh)
 {
     HWND parent = SalamanderGeneral->GetMsgBoxParent();
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
     {
         PathError = TRUE;
         return FALSE;
     }
 
     std::vector<CSftpEntry> entries;
-    if (!SftpConn.ListDir(Path[0] != 0 ? Path : "/", entries))
+    if (!Conn.ListDir(Path[0] != 0 ? Path : "/", entries))
     {
         // Try transparent reconnect once in case connection was dropped during idle
-        if (SftpEnsureConnected(parent) && SftpConn.ListDir(Path[0] != 0 ? Path : "/", entries))
+        if (EnsureConnected(parent) && Conn.ListDir(Path[0] != 0 ? Path : "/", entries))
         {
             // Successfully recovered
         }
@@ -1432,9 +1445,9 @@ CPluginFSInterface::Event(int event, DWORD param)
 
     if (event == FSE_TIMER && param == SFTP_TIMER_KEEPALIVE)
     {
-        if (SftpConn.IsConnected())
+        if (Conn.IsConnected())
         {
-            SftpConn.SendKeepalive();
+            Conn.SendKeepalive();
         }
         SalamanderGeneral->AddPluginFSTimer(8000, this, SFTP_TIMER_KEEPALIVE);
     }
@@ -1469,14 +1482,14 @@ CPluginFSInterface::GetSupportedServices()
 void WINAPI
 CPluginFSInterface::ShowSecurityInfo(HWND parent)
 {
-    if (!SftpConn.IsConnected())
+    if (!Conn.IsConnected())
     {
         SalamanderGeneral->SalMessageBox(parent, "No active SFTP connection.", LoadStr(IDS_PLUGINNAME),
                                          MB_OK | MB_ICONINFORMATION);
         return;
     }
     std::string info;
-    SftpConn.GetSecurityInfo(info);
+    Conn.GetSecurityInfo(info);
     SalamanderGeneral->SalMessageBox(parent, info.empty() ? "(no information)" : info.c_str(),
                                      "SFTP Security Information", MB_OK | MB_ICONINFORMATION);
 }
@@ -1600,7 +1613,7 @@ CPluginFSInterface::GetPathForMainWindowTitle(const char* fsName, int mode, char
     if (buf == NULL || bufSize <= 0)
         return FALSE;
 
-    const char* connName = SftpProfile.Name[0] != 0 ? SftpProfile.Name : SftpProfile.Host;
+    const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
 
     if (mode == 1) // "Directory Name Only"
     {
@@ -1632,7 +1645,7 @@ CPluginFSInterface::GetPathForMainWindowTitle(const char* fsName, int mode, char
     else if (mode == 2) // "Shortened Path"
     {
         char prefix[320];
-        SftpHostPrefix(prefix, sizeof(prefix));
+        SftpHostPrefix(Profile, prefix, sizeof(prefix));
         if (Path[0] == 0 || (Path[0] == '/' && Path[1] == 0) || (Path[0] == '\\' && Path[1] == 0))
         {
             if (connName[0] != 0)
@@ -1688,15 +1701,15 @@ CPluginFSInterface::ExecuteCommandLine(HWND parent, char* command, int& selFrom,
 {
     if (command[0] == 0)
         return FALSE;
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
         return TRUE;
     // execute command in current server directory
     char raw[2 * MAX_PATH];
     _snprintf_s(raw, _TRUNCATE, "cd \"%s\" && %s", Path[0] != 0 ? Path : "/", command);
     char full[3 * MAX_PATH];
-    WrapCommandWithSftpServerPrefix(SftpProfile.SftpServer, raw, full, sizeof(full));
+    WrapCommandWithSftpServerPrefix(Profile.SftpServer, raw, full, sizeof(full));
 
-    ShowCommandExecDialog(parent, command, full, SftpProfile, this);
+    ShowCommandExecDialog(parent, command, full, Profile, this);
     command[0] = 0; // vyčisti command line
     return TRUE;
 }
@@ -1727,11 +1740,11 @@ CPluginFSInterface::QuickRename(const char* fsName, int mode, HWND parent, CFile
     SftpJoin(Path, file.Name, remoteFrom, MAX_PATH);
     SftpJoin(Path, newName, remoteTo, MAX_PATH);
 
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
         return FALSE;
-    if (!SftpConn.Rename(remoteFrom, remoteTo))
+    if (!Conn.Rename(remoteFrom, remoteTo))
     {
-        _snprintf_s(buf, _TRUNCATE, "Rename failed:\n%s", SftpConn.LastError());
+        _snprintf_s(buf, _TRUNCATE, "Rename failed:\n%s", Conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, buf, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return FALSE;
     }
@@ -1780,12 +1793,12 @@ CPluginFSInterface::CreateDir(const char* fsName, int mode, HWND parent, char* n
         SftpJoin(Path, newName, remote, MAX_PATH);
     SftpNormalize(remote);
 
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
         return FALSE;
-    if (!SftpConn.MakeDir(remote))
+    if (!Conn.MakeDir(remote))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Cannot create directory:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Cannot create directory:\n%s", Conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return FALSE;
     }
@@ -1829,7 +1842,7 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
     {
         char remote[MAX_PATH];
         SftpJoin(Path, file.Name, remote, MAX_PATH);
-        if (SftpEnsureConnected(parent) && SftpConn.Download(remote, tmpFileName))
+        if (EnsureConnected(parent) && Conn.Download(remote, tmpFileName))
         {
             newFileOK = TRUE;
             HANDLE hFile = HANDLES_Q(CreateFile(tmpFileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -1844,7 +1857,7 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
         else
         {
             char errorText[3 * MAX_PATH + 100];
-            _snprintf_s(errorText, _TRUNCATE, "Cannot download file %s.\n%s", file.Name, SftpConn.LastError());
+            _snprintf_s(errorText, _TRUNCATE, "Cannot download file %s.\n%s", file.Name, Conn.LastError());
             SalamanderGeneral->SalMessageBox(parent, errorText, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         }
     }
@@ -1866,26 +1879,26 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
 }
 
 // recursive deletion of file/directory on SFTP
-static bool SftpDeleteRecursive(const char* remote, bool isDir)
+static bool SftpDeleteRecursive(CSftpConnection& conn, const char* remote, bool isDir)
 {
     if (!isDir)
-        return SftpConn.RemoveFile(remote);
+        return conn.RemoveFile(remote);
     std::vector<CSftpEntry> entries;
-    if (SftpConn.ListDir(remote, entries))
+    if (conn.ListDir(remote, entries))
     {
         for (size_t i = 0; i < entries.size(); i++)
         {
             char child[MAX_PATH];
             SftpJoin(remote, entries[i].Name.c_str(), child, MAX_PATH);
-            if (!SftpDeleteRecursive(child, entries[i].IsDir))
+            if (!SftpDeleteRecursive(conn, child, entries[i].IsDir))
                 return false;
         }
     }
-    return SftpConn.RemoveDir(remote);
+    return conn.RemoveDir(remote);
 }
 
 // recursive download of file/directory from SFTP to disk
-static bool SftpDownloadRecursive(const char* remote, const char* local, bool isDir)
+static bool SftpDownloadRecursive(CSftpConnection& conn, const char* remote, const char* local, bool isDir)
 {
     if (SftpIsCancelled())
         return false;
@@ -1893,24 +1906,24 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
     {
         if (g_SyncMode) // synchronization: without asking, only missing/changed
         {
-            if (SyncSkipDownload(remote, local))
+            if (SyncSkipDownload(conn, remote, local))
                 return true;
             if (SftpIsCancelled())
                 return false;
-            return SftpConn.Download(remote, local);
+            return conn.Download(remote, local);
         }
         if (GetFileAttributes(local) != INVALID_FILE_ATTRIBUTES) // local file already exists
         {
             unsigned __int64 localSize = LocalFileSize(local);
             unsigned __int64 remoteSize = 0;
             // offer resume when local is smaller than remote (SFTP only)
-            if (!SftpConn.IsScpMode() && localSize > 0 &&
-                SftpConn.RemoteFileSize(remote, remoteSize) && remoteSize > localSize)
+            if (!conn.IsScpMode() && localSize > 0 &&
+                conn.RemoteFileSize(remote, remoteSize) && remoteSize > localSize)
             {
                 int r = SftpAskResume(local, localSize, remoteSize);
                 if (r == -1) { g_OvrCancel = true; return false; }
                 if (SftpIsCancelled()) return false;
-                if (r == 1) return SftpConn.Download(remote, local, localSize); // resume
+                if (r == 1) return conn.Download(remote, local, localSize); // resume
                 // r == 2 -> overwrite (continue with full download)
             }
             else
@@ -1927,13 +1940,13 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
         }
         if (SftpIsCancelled())
             return false;
-        return SftpConn.Download(remote, local);
+        return conn.Download(remote, local);
     }
     if (SftpIsCancelled())
         return false;
     CreateDirectory(local, NULL);
     std::vector<CSftpEntry> entries;
-    if (!SftpConn.ListDir(remote, entries))
+    if (!conn.ListDir(remote, entries))
         return false;
     for (size_t i = 0; i < entries.size(); i++)
     {
@@ -1943,14 +1956,14 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
         SftpJoin(remote, entries[i].Name.c_str(), r, MAX_PATH);
         lstrcpyn(l, local, 2 * MAX_PATH);
         SalamanderGeneral->SalPathAppend(l, entries[i].Name.c_str(), 2 * MAX_PATH);
-        if (!SftpDownloadRecursive(r, l, entries[i].IsDir))
+        if (!SftpDownloadRecursive(conn, r, l, entries[i].IsDir))
             return false;
     }
     return true;
 }
 
 // recursive upload of file/directory from disk to SFTP
-static bool SftpUploadRecursive(const char* local, const char* remote, bool isDir)
+static bool SftpUploadRecursive(CSftpConnection& conn, const char* local, const char* remote, bool isDir)
 {
     if (SftpIsCancelled())
         return false;
@@ -1958,24 +1971,24 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
     {
         if (g_SyncMode) // synchronization: without asking, only missing/changed
         {
-            if (SyncSkipUpload(local, remote))
+            if (SyncSkipUpload(conn, local, remote))
                 return true;
             if (SftpIsCancelled())
                 return false;
-            return SftpConn.Upload(local, remote);
+            return conn.Upload(local, remote);
         }
-        if (SftpConn.PathType(remote) == 1) // remote file already exists
+        if (conn.PathType(remote) == 1) // remote file already exists
         {
             unsigned __int64 localSize = LocalFileSize(local);
             unsigned __int64 remoteSize = 0;
             // offer resume when remote is smaller than local (SFTP only)
-            if (!SftpConn.IsScpMode() &&
-                SftpConn.RemoteFileSize(remote, remoteSize) && remoteSize > 0 && remoteSize < localSize)
+            if (!conn.IsScpMode() &&
+                conn.RemoteFileSize(remote, remoteSize) && remoteSize > 0 && remoteSize < localSize)
             {
                 int r = SftpAskResume(remote, remoteSize, localSize);
                 if (r == -1) { g_OvrCancel = true; return false; }
                 if (SftpIsCancelled()) return false;
-                if (r == 1) return SftpConn.Upload(local, remote, remoteSize); // resume
+                if (r == 1) return conn.Upload(local, remote, remoteSize); // resume
                 // r == 2 -> overwrite
             }
             else
@@ -1992,11 +2005,11 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
         }
         if (SftpIsCancelled())
             return false;
-        return SftpConn.Upload(local, remote);
+        return conn.Upload(local, remote);
     }
     if (SftpIsCancelled())
         return false;
-    SftpConn.MakeDir(remote); // ignore error (may already exist)
+    conn.MakeDir(remote); // ignore error (may already exist)
     char mask[2 * MAX_PATH];
     lstrcpyn(mask, local, 2 * MAX_PATH);
     SalamanderGeneral->SalPathAppend(mask, "*", 2 * MAX_PATH);
@@ -2019,7 +2032,7 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
         SalamanderGeneral->SalPathAppend(l, fd.cFileName, 2 * MAX_PATH);
         SftpJoin(remote, fd.cFileName, r, MAX_PATH);
         bool childDir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-        if (!SftpUploadRecursive(l, r, childDir))
+        if (!SftpUploadRecursive(conn, l, r, childDir))
         {
             ok = false;
             break;
@@ -2059,7 +2072,7 @@ static void LocalDeleteRecursive(const char* path, bool isDir)
 }
 
 // recursive sum of remote directory size with cancellation check and symlink cycle protection
-static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, bool& cancelled, CCalcSizeProgressDlg* progDlg, int depth = 0)
+static unsigned __int64 SftpDirSize(CSftpConnection& conn, const char* remote, int& files, int& dirs, bool& cancelled, CCalcSizeProgressDlg* progDlg, int depth = 0)
 {
     if (cancelled || depth > 50)
         return 0;
@@ -2077,7 +2090,7 @@ static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, b
 
     unsigned __int64 total = 0;
     std::vector<CSftpEntry> entries;
-    if (!SftpConn.ListDir(remote, entries))
+    if (!conn.ListDir(remote, entries))
         return 0;
 
     for (size_t i = 0; i < entries.size(); i++)
@@ -2093,7 +2106,7 @@ static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, b
         if (entries[i].IsDir && !entries[i].IsLink) // do NOT recurse into symlinked directories to prevent cycles
         {
             dirs++;
-            total += SftpDirSize(child, files, dirs, cancelled, progDlg, depth + 1);
+            total += SftpDirSize(conn, child, files, dirs, cancelled, progDlg, depth + 1);
         }
         else
         {
@@ -2105,9 +2118,9 @@ static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs, b
 }
 
 // Edit file: download to temp, open in editor, after confirmation upload back.
-void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
+void SftpEditFile(HWND parent, CPluginFSInterface* fs, const char* remoteDir, const char* fileName)
 {
-    if (!SftpEnsureConnected(parent))
+    if (fs == NULL || !fs->EnsureConnected(parent))
         return;
     char remote[MAX_PATH];
     SftpJoin(remoteDir, fileName, remote, MAX_PATH);
@@ -2118,10 +2131,10 @@ void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
     lstrcpyn(tmpFile, tmpDir, 2 * MAX_PATH);
     SalamanderGeneral->SalPathAppend(tmpFile, fileName, 2 * MAX_PATH);
 
-    if (!SftpConn.Download(remote, tmpFile))
+    if (!fs->Conn.Download(remote, tmpFile))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Cannot download file:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Cannot download file:\n%s", fs->Conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return;
     }
@@ -2130,7 +2143,7 @@ void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
                                          "File has been opened in editor.\n\nWhen you save your changes, click Yes to upload back to server.\n(No = discard changes)",
                                          "Edit file", MB_YESNO | MB_ICONQUESTION) == IDYES)
     {
-        if (SftpConn.Upload(tmpFile, remote))
+        if (fs->Conn.Upload(tmpFile, remote))
         {
             char fsfull[MAX_PATH + 32];
             _snprintf_s(fsfull, _TRUNCATE, "%s:%s", AssignedFSName, remoteDir);
@@ -2139,7 +2152,7 @@ void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
         else
         {
             char eb[600];
-            _snprintf_s(eb, _TRUNCATE, "Upload failed:\n%s", SftpConn.LastError());
+            _snprintf_s(eb, _TRUNCATE, "Upload failed:\n%s", fs->Conn.LastError());
             SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         }
     }
@@ -2147,9 +2160,11 @@ void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
 }
 
 // Calculate size of selected items on server.
-void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
+void SftpCalcSize(HWND parent, CPluginFSInterface* fs, const char* remoteDir, int panel)
 {
-    if (!SftpEnsureConnected(parent))
+    if (fs == NULL && panel >= 0)
+        fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(panel);
+    if (fs == NULL || !fs->EnsureConnected(parent))
         return;
     int index = 0;
     BOOL isDir = FALSE;
@@ -2207,10 +2222,10 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
                 }
 
                 // Try fast server-side calculation (du / find) first with privilege elevation
-                if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs, true))
+                if (!fs->Conn.FastDirSize(remote, dirSize, subFiles, subDirs, true))
                 {
                     // Fall back to recursive SFTP scan with cancel check
-                    dirSize = SftpDirSize(remote, subFiles, subDirs, cancelled, progDlg);
+                    dirSize = SftpDirSize(fs->Conn, remote, subFiles, subDirs, cancelled, progDlg);
                 }
 
                 files += subFiles;
@@ -2280,7 +2295,7 @@ void SftpOnSpacePressedOnFolder(int panel, const CFileData* f)
         return;
 
     HWND hMain = SalamanderGeneral->GetMainWindowHWND();
-    if (!SftpEnsureConnected(hMain))
+    if (!fs->EnsureConnected(hMain))
         return;
 
     char folderName[MAX_PATH];
@@ -2326,10 +2341,10 @@ void SftpOnSpacePressedOnFolder(int panel, const CFileData* f)
     int subFiles = 0, subDirs = 0;
 
     // Try fast server-side calculation (du only, no find) first with privilege elevation
-    if (!SftpConn.FastDirSize(remote, dirSize, subFiles, subDirs, false))
+    if (!fs->Conn.FastDirSize(remote, dirSize, subFiles, subDirs, false))
     {
         bool cancelled = false;
-        dirSize = SftpDirSize(remote, subFiles, subDirs, cancelled, NULL);
+        dirSize = SftpDirSize(fs->Conn, remote, subFiles, subDirs, cancelled, NULL);
     }
 
     CFileData* nonConstF = const_cast<CFileData*>(targetF);
@@ -2355,18 +2370,19 @@ void SftpOnSpacePressedOnFolder(int panel, const CFileData* f)
 
 // directory synchronization: direction 0 = download (server->PC), 1 = upload (PC->server).
 // Only transfers missing and changed files (size + time comparison).
-void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction)
+void SftpSyncDir(HWND parent, CPluginFSInterface* fs, const char* remoteDir, const char* localDir, int direction)
 {
-    if (!SftpEnsureConnected(parent))
+    if (fs == NULL || !fs->EnsureConnected(parent))
         return;
+    const char* connName = fs->Profile.Name[0] != 0 ? fs->Profile.Name : fs->Profile.Host;
     bool isUpload = (direction == 1);
-    SftpProgressBegin(parent, isUpload, isUpload ? localDir : remoteDir, isUpload ? remoteDir : localDir);
+    SftpProgressBegin(parent, isUpload, isUpload ? localDir : remoteDir, isUpload ? remoteDir : localDir, 1, 0, connName);
     g_SyncMode = 1;
     bool ok;
     if (direction == 0)
-        ok = SftpDownloadRecursive(remoteDir, localDir, true);
+        ok = SftpDownloadRecursive(fs->Conn, remoteDir, localDir, true);
     else
-        ok = SftpUploadRecursive(localDir, remoteDir, true);
+        ok = SftpUploadRecursive(fs->Conn, localDir, remoteDir, true);
     g_SyncMode = 0;
     SftpProgressEnd();
     if (direction == 1)
@@ -2374,7 +2390,7 @@ void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int d
     if (!ok && !SftpIsCancelled())
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Synchronization failed:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Synchronization failed:\n%s", fs->Conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
     }
     else if (!SftpIsCancelled())
@@ -2390,7 +2406,7 @@ CPluginFSInterface::Delete(const char* fsName, int mode, HWND parent, int panel,
     if (mode == 1)
         return FALSE; // request standard delete confirmation
 
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
     {
         cancelOrError = TRUE;
         return FALSE;
@@ -2412,11 +2428,11 @@ CPluginFSInterface::Delete(const char* fsName, int mode, HWND parent, int panel,
 
         char remote[MAX_PATH];
         SftpJoin(Path, f->Name, remote, MAX_PATH);
-        if (!SftpDeleteRecursive(remote, isDir != 0))
+        if (!SftpDeleteRecursive(Conn, remote, isDir != 0))
         {
             char eb[700];
             _snprintf_s(eb, _TRUNCATE, "Cannot delete \"%s\":\n%s\n\nContinue with other items?",
-                        f->Name, SftpConn.LastError());
+                        f->Name, Conn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
             {
@@ -2703,7 +2719,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     BOOL diskPath = (target[0] != 0 && target[1] == ':') ||
                     (target[0] == '\\' && target[1] == '\\');
 
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
     {
         cancelOrHandlePath = TRUE;
         return TRUE;
@@ -2729,7 +2745,8 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         BOOL isDirF = FALSE;
         BOOL okF = TRUE;
         const CFileData* ff;
-        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF);
+        const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
+        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF, 0, connName);
         while (1)
         {
             if (SftpIsCancelled())
@@ -2746,8 +2763,8 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
             SftpJoin(remoteTargetDir, ff->Name, dst, MAX_PATH);
             lstrcpyn(tmpItem, tmpDir, 2 * MAX_PATH);
             SalamanderGeneral->SalPathAppend(tmpItem, ff->Name, 2 * MAX_PATH);
-            BOOL step = SftpDownloadRecursive(src, tmpItem, isDirF != 0) &&
-                        SftpUploadRecursive(tmpItem, dst, isDirF != 0);
+            BOOL step = SftpDownloadRecursive(Conn, src, tmpItem, isDirF != 0) &&
+                        SftpUploadRecursive(Conn, tmpItem, dst, isDirF != 0);
             LocalDeleteRecursive(tmpItem, isDirF != 0); // cleanup temp
             if (!step)
             {
@@ -2757,7 +2774,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                     break;
                 }
                 char eb[700];
-                _snprintf_s(eb, _TRUNCATE, "Error copying \"%s\":\n%s\n\nContinue?", ff->Name, SftpConn.LastError());
+                _snprintf_s(eb, _TRUNCATE, "Error copying \"%s\":\n%s\n\nContinue?", ff->Name, Conn.LastError());
                 if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
                 {
                     okF = FALSE;
@@ -2765,7 +2782,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                 }
             }
             else if (!copy)
-                SftpDeleteRecursive(src, isDirF != 0); // Move -> delete source
+                SftpDeleteRecursive(Conn, src, isDirF != 0); // Move -> delete source
             if (focusedF)
                 break;
         }
@@ -2788,7 +2805,8 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     BOOL isDir = FALSE;
     BOOL success = TRUE;
     const CFileData* f;
-    SftpProgressBegin(parent, false, Path, target, totalFiles);
+    const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
+    SftpProgressBegin(parent, false, Path, target, totalFiles, 0, connName);
     while (1)
     {
         if (SftpIsCancelled())
@@ -2804,7 +2822,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         SftpJoin(Path, f->Name, remote, MAX_PATH);
         lstrcpyn(local, target, 2 * MAX_PATH);
         SalamanderGeneral->SalPathAppend(local, f->Name, 2 * MAX_PATH);
-        if (!SftpDownloadRecursive(remote, local, isDir != 0))
+        if (!SftpDownloadRecursive(Conn, remote, local, isDir != 0))
         {
             if (SftpIsCancelled())
             {
@@ -2813,7 +2831,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
             }
             char eb[700];
             _snprintf_s(eb, _TRUNCATE, "Error downloading \"%s\":\n%s\n\nContinue with other items?",
-                        f->Name, SftpConn.LastError());
+                        f->Name, Conn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
             {
@@ -2839,7 +2857,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                 break;
             char remote[MAX_PATH];
             SftpJoin(Path, f->Name, remote, MAX_PATH);
-            SftpDeleteRecursive(remote, isDir != 0);
+            SftpDeleteRecursive(Conn, remote, isDir != 0);
             if (focused)
                 break;
         }
@@ -2889,7 +2907,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     }
     SftpNormalize(remoteDir);
 
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
     {
         if (invalidPathOrCancel != NULL)
             *invalidPathOrCancel = TRUE;
@@ -2904,7 +2922,8 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     FILETIME lastWrite;
     BOOL success = TRUE;
     int totalFiles = (sourceFiles == 0 && sourceDirs == 0) ? 1 : (sourceFiles + sourceDirs);
-    SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles);
+    const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
+    SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles, 0, connName);
     while ((name = next(NULL, 0, &dosName, &isDir, &size, &attr, &lastWrite, nextParam, NULL)) != NULL)
     {
         if (SftpIsCancelled())
@@ -2921,7 +2940,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
         base = (base != NULL) ? base + 1 : name;
         char remote[MAX_PATH];
         SftpJoin(remoteDir, base, remote, MAX_PATH);
-        if (!SftpUploadRecursive(local, remote, isDir != 0))
+        if (!SftpUploadRecursive(Conn, local, remote, isDir != 0))
         {
             if (SftpIsCancelled())
             {
@@ -2930,7 +2949,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
             }
             char eb[700];
             _snprintf_s(eb, _TRUNCATE, "Error uploading \"%s\":\n%s\n\nContinue with other items?",
-                        base, SftpConn.LastError());
+                        base, Conn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
             {
@@ -2997,7 +3016,7 @@ BOOL WINAPI
 CPluginFSInterface::ChangeAttributes(const char* fsName, HWND parent, int panel,
                                      int selectedFiles, int selectedDirs)
 {
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
         return FALSE;
 
     // pre-fill permissions of first selected/focused item
@@ -3011,7 +3030,7 @@ CPluginFSInterface::ChangeAttributes(const char* fsName, HWND parent, int panel,
         char remote[MAX_PATH];
         SftpJoin(Path, f->Name, remote, MAX_PATH);
         unsigned long m;
-        if (SftpConn.GetPermissions(remote, m))
+        if (Conn.GetPermissions(remote, m))
             g_ChmodOctal = (int)m;
     }
 
@@ -3031,11 +3050,11 @@ CPluginFSInterface::ChangeAttributes(const char* fsName, HWND parent, int panel,
             break;
         char remote[MAX_PATH];
         SftpJoin(Path, f->Name, remote, MAX_PATH);
-        if (!SftpConn.Chmod(remote, mode))
+        if (!Conn.Chmod(remote, mode))
         {
             char eb[700];
             _snprintf_s(eb, _TRUNCATE, "Cannot change permissions \"%s\":\n%s\n\nContinue?",
-                        f->Name, SftpConn.LastError());
+                        f->Name, Conn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
             {
@@ -3054,7 +3073,7 @@ void WINAPI
 CPluginFSInterface::ShowProperties(const char* fsName, HWND parent, int panel,
                                    int selectedFiles, int selectedDirs)
 {
-    if (!SftpEnsureConnected(parent))
+    if (!EnsureConnected(parent))
         return;
     BOOL focused = (selectedFiles == 0 && selectedDirs == 0);
     int index = 0;
@@ -3067,10 +3086,10 @@ CPluginFSInterface::ShowProperties(const char* fsName, HWND parent, int panel,
     SftpJoin(Path, f->Name, remote, MAX_PATH);
     unsigned __int64 size;
     unsigned long perms, uid, gid, mtime;
-    if (!SftpConn.StatFull(remote, size, perms, uid, gid, mtime))
+    if (!Conn.StatFull(remote, size, perms, uid, gid, mtime))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Cannot read properties:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Cannot read properties:\n%s", Conn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return;
     }

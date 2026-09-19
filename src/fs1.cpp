@@ -204,10 +204,13 @@ static void GetSelFolder(HWND HWindow, char* out, int outSize)
     }
 }
 
+// Static profile holding current values in the connection dialog
+static CSftpProfile g_DlgProfile;
+
 // load profile into dialog fields
 static void LoadProfileToFields(HWND HWindow, const CSftpSavedProfile& p)
 {
-    lstrcpyn(SftpProfile.Name, p.Name, sizeof(SftpProfile.Name));
+    lstrcpyn(g_DlgProfile.Name, p.Name, sizeof(g_DlgProfile.Name));
     char portStr[16];
     SetDlgItemText(HWindow, IDC_HOST, p.Host);
     _snprintf_s(portStr, _TRUNCATE, "%d", p.Port > 0 ? p.Port : 22);
@@ -443,19 +446,19 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         BuildConnectTree(GetDlgItem(HWindow, IDC_CATTREE), false);
 
         // prefill from last profile
-        SetDlgItemText(HWindow, IDC_HOST, SftpProfile.Host);
+        SetDlgItemText(HWindow, IDC_HOST, g_DlgProfile.Host);
         char portStr[16];
-        _snprintf_s(portStr, _TRUNCATE, "%d", SftpProfile.Port > 0 ? SftpProfile.Port : 22);
+        _snprintf_s(portStr, _TRUNCATE, "%d", g_DlgProfile.Port > 0 ? g_DlgProfile.Port : 22);
         SetDlgItemText(HWindow, IDC_PORT, portStr);
-        SetDlgItemText(HWindow, IDC_USER, SftpProfile.User);
-        SetDlgItemText(HWindow, IDC_PASSWORD, SftpProfile.Password);
-        SetDlgItemText(HWindow, IDC_KEYFILE, SftpProfile.KeyFile);
+        SetDlgItemText(HWindow, IDC_USER, g_DlgProfile.User);
+        SetDlgItemText(HWindow, IDC_PASSWORD, g_DlgProfile.Password);
+        SetDlgItemText(HWindow, IDC_KEYFILE, g_DlgProfile.KeyFile);
         SetDlgItemText(HWindow, IDC_PATH, ConnectPath[0] != 0 ? ConnectPath : "/");
-        SetDlgItemText(HWindow, IDC_SFTPSERVER, SftpProfile.SftpServer);
-        CheckDlgButton(HWindow, IDC_SSHCOMPRESS, SftpProfile.UseCompression ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(HWindow, IDC_SCPFALLBACK, SftpProfile.ScpFallback ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(HWindow, IDC_EXECONENTER, SftpProfile.ExecOnEnter ? BST_CHECKED : BST_UNCHECKED);
-        SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, SftpProfile.Protocol == 1 ? 1 : 0, 0);
+        SetDlgItemText(HWindow, IDC_SFTPSERVER, g_DlgProfile.SftpServer);
+        CheckDlgButton(HWindow, IDC_SSHCOMPRESS, g_DlgProfile.UseCompression ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(HWindow, IDC_SCPFALLBACK, g_DlgProfile.ScpFallback ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(HWindow, IDC_EXECONENTER, g_DlgProfile.ExecOnEnter ? BST_CHECKED : BST_UNCHECKED);
+        SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_SETCURSEL, g_DlgProfile.Protocol == 1 ? 1 : 0, 0);
 
         // if default connection is set, prefill it
         if (SftpDefaultSession[0] != 0)
@@ -594,7 +597,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         {
             // new connection: clear fields and switch to Connection page
             g_SelectedProfileIndex = -1;
-            SftpProfile.Name[0] = 0;
+            g_DlgProfile.Name[0] = 0;
             SetDlgItemText(HWindow, IDC_HOST, "");
             SetDlgItemText(HWindow, IDC_PORT, "22");
             SetDlgItemText(HWindow, IDC_USER, "");
@@ -801,50 +804,50 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
                 return TRUE;
             }
-            GetDlgItemText(HWindow, IDC_HOST, SftpProfile.Host, sizeof(SftpProfile.Host));
+            GetDlgItemText(HWindow, IDC_HOST, g_DlgProfile.Host, sizeof(g_DlgProfile.Host));
             char portStr[16];
             GetDlgItemText(HWindow, IDC_PORT, portStr, sizeof(portStr));
-            SftpProfile.Port = atoi(portStr);
-            if (SftpProfile.Port <= 0)
-                SftpProfile.Port = 22;
-            GetDlgItemText(HWindow, IDC_USER, SftpProfile.User, sizeof(SftpProfile.User));
+            g_DlgProfile.Port = atoi(portStr);
+            if (g_DlgProfile.Port <= 0)
+                g_DlgProfile.Port = 22;
+            GetDlgItemText(HWindow, IDC_USER, g_DlgProfile.User, sizeof(g_DlgProfile.User));
             if (g_SelectedProfileIndex >= 0 && g_SelectedProfileIndex < SftpProfileCount &&
-                _stricmp(SftpProfile.Host, SftpProfiles[g_SelectedProfileIndex].Host) == 0)
+                _stricmp(g_DlgProfile.Host, SftpProfiles[g_SelectedProfileIndex].Host) == 0)
             {
-                lstrcpyn(SftpProfile.Name, SftpProfiles[g_SelectedProfileIndex].Name, sizeof(SftpProfile.Name));
+                lstrcpyn(g_DlgProfile.Name, SftpProfiles[g_SelectedProfileIndex].Name, sizeof(g_DlgProfile.Name));
             }
             else
             {
                 int matched = -1;
                 for (int i = 0; i < SftpProfileCount; i++)
                 {
-                    if (_stricmp(SftpProfile.Host, SftpProfiles[i].Host) == 0 &&
-                        (SftpProfile.User[0] == 0 || _stricmp(SftpProfile.User, SftpProfiles[i].User) == 0))
+                    if (_stricmp(g_DlgProfile.Host, SftpProfiles[i].Host) == 0 &&
+                        (g_DlgProfile.User[0] == 0 || _stricmp(g_DlgProfile.User, SftpProfiles[i].User) == 0))
                     {
                         matched = i;
                         break;
                     }
                 }
                 if (matched >= 0)
-                    lstrcpyn(SftpProfile.Name, SftpProfiles[matched].Name, sizeof(SftpProfile.Name));
+                    lstrcpyn(g_DlgProfile.Name, SftpProfiles[matched].Name, sizeof(g_DlgProfile.Name));
                 else
-                    SftpProfile.Name[0] = 0;
+                    g_DlgProfile.Name[0] = 0;
             }
-            GetDlgItemText(HWindow, IDC_PASSWORD, SftpProfile.Password, sizeof(SftpProfile.Password));
-            GetDlgItemText(HWindow, IDC_KEYFILE, SftpProfile.KeyFile, sizeof(SftpProfile.KeyFile));
-            GetDlgItemText(HWindow, IDC_PATH, SftpProfile.Path, sizeof(SftpProfile.Path));
-            GetDlgItemText(HWindow, IDC_SFTPSERVER, SftpProfile.SftpServer, sizeof(SftpProfile.SftpServer));
-            SftpProfile.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
-            SftpProfile.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
-            SftpProfile.ExecOnEnter = IsDlgButtonChecked(HWindow, IDC_EXECONENTER) == BST_CHECKED;
-            SftpProfile.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
+            GetDlgItemText(HWindow, IDC_PASSWORD, g_DlgProfile.Password, sizeof(g_DlgProfile.Password));
+            GetDlgItemText(HWindow, IDC_KEYFILE, g_DlgProfile.KeyFile, sizeof(g_DlgProfile.KeyFile));
+            GetDlgItemText(HWindow, IDC_PATH, g_DlgProfile.Path, sizeof(g_DlgProfile.Path));
+            GetDlgItemText(HWindow, IDC_SFTPSERVER, g_DlgProfile.SftpServer, sizeof(g_DlgProfile.SftpServer));
+            g_DlgProfile.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
+            g_DlgProfile.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
+            g_DlgProfile.ExecOnEnter = IsDlgButtonChecked(HWindow, IDC_EXECONENTER) == BST_CHECKED;
+            g_DlgProfile.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
             {
                 int e = (int)SendDlgItemMessage(HWindow, IDC_ENCODING, CB_GETCURSEL, 0, 0);
                 if (e >= 0 && e <= 2)
                     SftpEncoding = e;
             }
             GetDlgItemText(HWindow, IDC_PATH, ConnectPath, MAX_PATH);
-            if (SftpProfile.Host[0] == 0)
+            if (g_DlgProfile.Host[0] == 0)
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Enter server address (host).",
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
@@ -854,7 +857,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             // password.  Keep the login dialog open so the prefilled user name is
             // preserved and let the user enter the password before connecting.
             // An empty password is valid for key authentication, though.
-            if (SftpProfile.Password[0] == 0 && SftpProfile.KeyFile[0] == 0)
+            if (g_DlgProfile.Password[0] == 0 && g_DlgProfile.KeyFile[0] == 0)
             {
                 HWND tree = GetDlgItem(HWindow, IDC_CATTREE);
                 TreeView_SelectItem(tree, TreeView_GetRoot(tree)); // select "Connection"
@@ -864,8 +867,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                 SendMessage(password, EM_SETSEL, 0, -1);
                 return TRUE;
             }
-            SftpProfile.Valid = true;
-            SftpConn.Disconnect(); // new connection -> close old
+            g_DlgProfile.Valid = true;
             EndDialog(HWindow, IDOK);
             return TRUE;
         }
@@ -898,6 +900,7 @@ CPluginInterfaceForFS::ExecuteChangeDriveMenuItem(int panel)
             UpdateWindow(SalamanderGeneral->GetMainWindowHWND());
 
             // change the active panel path to AssignedFSName:ConnectPath
+            ConnectData.Profile = g_DlgProfile;
             ConnectData.UseConnectData = TRUE;
             lstrcpyn(ConnectData.UserPart, ConnectPath, MAX_PATH);
             int failReason;
@@ -1168,7 +1171,7 @@ CPluginInterfaceForFS::ExecuteOnFS(int panel, CPluginFSInterfaceAbstract* plugin
         bool isExec = (ext != NULL && (ext->Rights[3] == 'x' || ext->Rights[3] == 's' ||
                                        ext->Rights[6] == 'x' || ext->Rights[6] == 's' ||
                                        ext->Rights[9] == 'x' || ext->Rights[9] == 't'));
-        if (isExec && SftpProfile.ExecOnEnter)
+        if (isExec && fs->Profile.ExecOnEnter)
         {
             SalamanderGeneral->SetUserWorkedOnPanelPath(panel);
             char cmd[MAX_PATH + 16];
@@ -1185,12 +1188,12 @@ CPluginInterfaceForFS::ExecuteOnFS(int panel, CPluginFSInterfaceAbstract* plugin
         GetTempPath(MAX_PATH, tmpDir);
         lstrcpyn(tmpFile, tmpDir, MAX_PATH);
         SalamanderGeneral->SalPathAppend(tmpFile, file.Name, MAX_PATH);
-        if (SftpEnsureConnected(parent) && SftpConn.Download(remote, tmpFile))
+        if (fs->EnsureConnected(parent) && fs->Conn.Download(remote, tmpFile))
             ShellExecute(SalamanderGeneral->GetMainWindowHWND(), "open", tmpFile, NULL, tmpDir, SW_SHOWNORMAL);
         else
         {
             char msg[600];
-            _snprintf_s(msg, _TRUNCATE, "Cannot download file:\n%s", SftpConn.LastError());
+            _snprintf_s(msg, _TRUNCATE, "Cannot download file:\n%s", fs->Conn.LastError());
             SalamanderGeneral->SalMessageBox(parent, msg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         }
     }

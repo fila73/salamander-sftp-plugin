@@ -4,8 +4,6 @@
 #pragma once
 #include "sftpconn.h"
 
-extern CSftpConnection SftpConn; // single global connection
-
 // Connection profile specified in dialog.
 struct CSftpProfile
 {
@@ -23,7 +21,6 @@ struct CSftpProfile
     bool ExecOnEnter;    // execute (+x) files on server on Enter
     bool Valid;
 };
-extern CSftpProfile SftpProfile;
 
 // Saved server (profile in connection manager).
 #define SFTP_MAX_PROFILES 100
@@ -39,13 +36,13 @@ struct CSftpSavedProfile
     char SftpServer[260];
     bool UseCompression; // zlib compression
     int Protocol;        // 0 = SFTP, 1 = SCP
-    bool ScpFallback;    // emergency SCP
+    bool ScpFallback;    // fallback to SCP on SFTP failure
     bool ExecOnEnter;    // execute (+x) files on server on Enter
-    char Folder[128];    // folder (group) for connections, "" = root
+    char Folder[128];    // folder group name (empty = root)
 };
 extern CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 extern int SftpProfileCount;
-extern char SftpDefaultSession[128]; // default connection name ("As default" option)
+extern char SftpDefaultSession[128]; // name of profile to auto-fill in connect dialog
 
 #define SFTP_MAX_FOLDERS 64
 extern char SftpFolders[SFTP_MAX_FOLDERS][128]; // folder names (including empty)
@@ -53,7 +50,6 @@ extern int SftpFolderCount;
 
 // Ensures connection per CSftpProfile. Returns TRUE if connected.
 bool SftpEnsureConnected(HWND parent, CSftpConnection& conn, CSftpProfile& profile);
-bool SftpEnsureConnected(HWND parent); // legacy/transitional wrapper
 
 extern int SftpEncoding; // 0 = Auto/UTF-8, 1 = UTF-8, 2 = Off
 
@@ -68,10 +64,12 @@ bool SftpIsRoot(const char* path);
 // Returns true if user confirmed, false on cancel.
 bool SftpInputDialog(HWND parent, const char* prompt, bool echo, char* out, int outSize);
 
+class CPluginFSInterface;
+
 // Plugin menu commands (bypass Salamander 5.0 kernel limits).
-void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName);
-void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction);
-void SftpCalcSize(HWND parent, const char* remoteDir, int panel);
+void SftpEditFile(HWND parent, CPluginFSInterface* fs, const char* remoteDir, const char* fileName);
+void SftpSyncDir(HWND parent, CPluginFSInterface* fs, const char* remoteDir, const char* localDir, int direction);
+void SftpCalcSize(HWND parent, CPluginFSInterface* fs, const char* remoteDir, int panel);
 
 // Save configuration immediately to registry
 void SaveSftpConfigurationImmediately(HWND parent);

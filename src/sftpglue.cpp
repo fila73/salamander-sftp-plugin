@@ -3,8 +3,6 @@
 #include "sftpglue.h"
 #include <string.h>
 
-CSftpConnection SftpConn;
-CSftpProfile SftpProfile = {"", "", 22, "", "", "", "", "", false, 0, false, true, false};
 CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 int SftpProfileCount = 0;
 char SftpDefaultSession[128] = "";
@@ -93,11 +91,6 @@ bool SftpEnsureConnected(HWND parent, CSftpConnection& conn, CSftpProfile& profi
         return false;
     }
     return true;
-}
-
-bool SftpEnsureConnected(HWND parent)
-{
-    return SftpEnsureConnected(parent, SftpConn, SftpProfile);
 }
 
 void SftpNormalize(char* path)

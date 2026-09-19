@@ -162,7 +162,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
         BOOL isDir;
         const CFileData* f;
         if (fs != NULL && (f = SalamanderGeneral->GetPanelFocusedItem(PANEL_SOURCE, &isDir)) != NULL && !isDir)
-            SftpEditFile(parent, fs->Path, f->Name);
+            SftpEditFile(parent, fs, fs->Path, f->Name);
         return TRUE;
     }
 
@@ -170,7 +170,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
     {
         CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
         if (fs != NULL)
-            SftpCalcSize(parent, fs->Path, PANEL_SOURCE);
+            SftpCalcSize(parent, fs, fs->Path, PANEL_SOURCE);
         return TRUE;
     }
 
@@ -203,7 +203,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
                                                  "Directory synchronization", MB_YESNOCANCEL | MB_ICONQUESTION);
         if (r == IDCANCEL)
             return TRUE;
-        SftpSyncDir(parent, remoteDir, localDir, r == IDYES ? 0 : 1);
+        SftpSyncDir(parent, fs, remoteDir, localDir, r == IDYES ? 0 : 1);
         return TRUE;
     }
 
