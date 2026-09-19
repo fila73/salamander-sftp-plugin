@@ -61,6 +61,7 @@ LIBSSH2_OBJS = $(LIBSSH2_SRCS:.c=.o)
 CPP_SRCS = \
     src/sftpconn.cpp \
     src/sftpglue.cpp \
+    src/sftpworker.cpp \
     src/sftp.cpp \
     src/dialogs.cpp \
     src/fs1.cpp \
