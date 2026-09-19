@@ -176,5 +176,26 @@ Při přenosu více souborů nebo rekurzivním stahování/nahrávání musí pl
      - Vzdáleně: `libssh2_sftp_unlink(Sftp, remotePath)`
    - Pokud již byla přenesena část dat (`done > 0`), data zůstávají na disku/serveru pro možnost budoucího navázání (resume).
 
+---
 
+## 10. Per-instance konexe a asynchronní přenosy na pozadí (Phase B)
 
+Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolované per-instance konexe a asynchronní přenosy na pozadí:
+
+### 1. Izolace instancí (`CPluginFSInterface`):
+- Každý otevřený FS panel vlastní nezávislé SSH/SFTP spojení `Conn` (`CSftpConnection`) a konfiguraci `Profile` (`CSftpProfile`).
+- Všechny operace ve virtuálním FS panelu přistupují výhradně k `this->Conn` a `this->Profile`.
+- Keepalive časovač (`SFTP_TIMER_KEEPALIVE`) a odpojování panelů fungují zcela nezávisle na ostatních panelech či tabech.
+- Progress callbacky v `CSftpConnection` jsou instancovány (každé spojení má svůj callback a kontext).
+
+### 2. Architektura worker threadu (`CSftpTransferWorker`):
+- Přenosy souborů a celých složek (stahování i nahrávání) jsou vyčleněny do samostatného pracovního vlákna `CSftpTransferWorker`.
+- **Dedikovaná SSH relace (`WorkerConn`)**: Worker thread otevírá vlastní SSH spojení se stejným profilem, takže hlavní panelové spojení `Conn` zůstává ihned volné pro plynulé procházení a práci v panelech Salamandera.
+- **Fronta úloh (`TaskQueue`)**: Úlohy typu `CSftpTransferTask` jsou bezpečně řazeny pod zámkem `QueueLock` a probouzeny signálem `WakeEvent`.
+- **Thread-safe stav (`CSftpTransferState`)**: Sdílený stav uchovává informace o přenesených bajtech, rychlosti v MB/s, ETA a celkovém počtu položek.
+
+### 3. Nemodální dialog s tokom na pozadí:
+- Dialog `CSftpTransferProgressDlg` běží nemodálně a neblokuje hlavní okno správce souborů.
+- **Tlačítko „Na pozadí" (`IDB_BACKGROUND`)**: Uživatel může dialog kdykoli minimalizovat či skrýt (`SW_HIDE`), přičemž přenos pokračuje plnou rychlostí v pozadí.
+- **Znovuotevření dialogu**: V menu pluginu je k dispozici položka **„Show Transfers..."** (`MENUCMD_SHOWTRANSFERS`), která skrytý dialog přenese zpět do popředí.
+- **Notifikace změn**: Po dokončení všech úloh ve frontě worker dialog automaticky zavolá `SalamanderGeneral->PostChangeOnPathNotification` pro cíl i zdroj (u operací přesunutí / Move).

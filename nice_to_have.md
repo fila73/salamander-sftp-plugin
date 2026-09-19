@@ -43,9 +43,9 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Možnost přiřadit v nastavení připojení barvu profilu (např. červená pro produkci, oranžová pro staging, zelená pro dev/test) a při otevření relace automaticky obarvit příslušný tab v Samandarinu.
 - **Přínos**: Okamžité vizuální rozlišení prostředí a prevence nechtěných zásahů na produkčních strojích.
 
-### 11. Plně asynchronní nemodální přenosový dialog s během na pozadí (Phase B)
-- **Popis**: Rozšíření přenosového dialogu o běh na pozadí (tlačítko 'Na pozadí' / 'Hide') a vyčlenění přenosů do dedikovaného pracovního vlákna (worker thread) s frontou úloh. Salamander panely zůstanou plně interaktivní i během stahování a nahrávání velkých objemů dat.
-- **Závislost**: Vyžaduje per-instance konexe (viz bod 9), aby bylo možné při přenosu paralelně procházet a provádět operace ve vzdálených panelech bez blokování jediného SSH/SFTP socketu.
+### 11. Plně asynchronní nemodální přenosový dialog s během na pozadí (Phase B) [HOTOVO – v1.3.0]
+- **Popis**: Rozšíření přenosového dialogu o běh na pozadí (tlačítko 'Na pozadí' / 'Background') a vyčlenění přenosů do dedikovaného pracovního vlákna (`CSftpTransferWorker`) s frontou úloh. Salamander panely zůstávají plně interaktivní i během stahování a nahrávání velkých objemů dat.
+- **Stav**: Kompletně dokončeno (Kroky 11.1 až 11.10). Dedikovaná worker SSH relace `WorkerConn`, fronta `CSftpTransferTask`, thread-safe stav `CSftpTransferState`, nemodální dialog s tlačítkem „Na pozadí", znovuzobrazení přes menu „Show Transfers...", automatické notifikace panelů Salamandera přes `PostChangeOnPathNotification`.
 
 ### 12. Přenosy mezi dvěma SFTP servery (Server-to-Server Copy)
 - **Popis**: Podpora přímého kopírování/přesouvání souborů mezi dvěma otevřenými SFTP panely (např. server A v levém panelu, server B v pravém panelu) pomocí transparentního dočasného lokálního bufferu (streaming download z A -> upload na B).

@@ -168,7 +168,7 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 > [!IMPORTANT]
 > Bod 11 **závisí na dokončení bodu 9**. Bez per-instance konexí nelze provádět paralelní operace.
 
-### Krok 11.1 – Worker thread infrastruktura (`CSftpTransferWorker`)
+### Krok 11.1 – Worker thread infrastruktura (`CSftpTransferWorker`) [DOKONČENO]
 
 **Cíl**: Vytvořit třídu worker threadu, která provádí přenosové operace v pozadí.
 
@@ -176,200 +176,180 @@ Provedli jsme hloubkovou inspekci zdrojových kódů oficiálního FTP pluginu (
 - Třída `CSftpTransferWorker`:
   - Vlastní vlákno (`HANDLE ThreadHandle`)
   - Vlastní `CSftpConnection WorkerConn` – **dedicatedá konexe** otevřená se stejným profilem jako FS instance (nutné, protože hlavní `Conn` musí zůstat k dispozici pro procházení adresářů)
-  - Fronta úloh (`std::queue<CSftpTransferTask>`)
-  - Synchronizace: `CRITICAL_SECTION QueueLock`, `HANDLE WakeEvent`
-  - Stav: `volatile bool Running`, `volatile bool Cancelled`
-  - Metody:
-    - `Start(CSftpProfile& profile)` – spustí vlákno a otevře druhou konexe
-    - `Stop()` – čistě ukončí vlákno
-    - `EnqueueTask(CSftpTransferTask task)` – přidá úlohu do fronty
-    - `Cancel()` – nastaví `Cancelled`, úlohy se přeskočí
+  - Fronta úloh (`std::deque<CSftpTransferTask>`)
+  - Synchronizace: `CRITICAL_SECTION QueueLock`, `HANDLE WakeEvent`, `HANDLE StopEvent`
+  - Stav: `CSftpTransferState State` chráněný `CRITICAL_SECTION Lock`
 
 #### [NEW] [sftpworker.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.cpp)
-- Thread proc: smyčka `WaitForSingleObject(WakeEvent)` → vytáhne úlohu z fronty → provede stažení/nahrání → aktualizuje sdílený stav
+- Thread proc: smyčka `WaitForMultipleObjects(StopEvent, WakeEvent)` → vytáhne úlohu z fronty → provede stažení/nahrání → aktualizuje sdílený stav → notifikuje UI
 
-**Ověření**: Unit test – vytvoření workera, přidání dummy úlohy, korektní ukončení vlákna.
+**Ověření**: Unit test `test/test_worker.cpp` – vytvoření workera, přidání úloh, snapshot stavu, storno, korektní ukončení vlákna (100% pass).
 
 ---
 
-### Krok 11.2 – Struktura přenosové úlohy (`CSftpTransferTask`)
+### Krok 11.2 – Struktura přenosové úlohy (`CSftpTransferTask`) [DOKONČENO]
 
 **Cíl**: Definovat datovou strukturu popisující jednu přenosovou operaci.
 
-#### [MODIFY] [sftpworker.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.h)
+#### [NEW] [sftpworker.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.h)
 ```cpp
 struct CSftpTransferTask
 {
-    enum Type { Download, Upload };
+    enum Type { TaskDownload, TaskUpload };
     Type TaskType;
     std::string RemotePath;
     std::string LocalPath;
     unsigned __int64 FileSize;       // expected size (for progress)
     unsigned __int64 ResumeOffset;   // 0 = start from beginning
     bool IsDirectory;                // true = recursive
+    bool DeleteSourceOnSuccess;      // true for Move operation
 };
 ```
 
-**Ověření**: Kompilace.
+**Ověření**: Kompilace a unit testy.
 
 ---
 
-### Krok 11.3 – Sdílený stav přenosu (`CSftpTransferState`)
+### Krok 11.3 – Sdílený stav přenosu (`CSftpTransferState`) [DOKONČENO]
 
 **Cíl**: Struktura pro thread-safe sdílení stavu z worker threadu do UI.
 
-#### [MODIFY] [sftpworker.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.h)
+#### [NEW] [sftpworker.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.h)
 ```cpp
 struct CSftpTransferState
 {
     CRITICAL_SECTION Lock;
-    
-    // Aktuální soubor
-    char CurrentFile[MAX_PATH];
-    unsigned __int64 FileDone;
-    unsigned __int64 FileTotal;
-    
-    // Celkový postup
-    int CurrentIndex;
-    int TotalCount;
-    unsigned __int64 TotalDone;
-    unsigned __int64 TotalExpected;
-    
-    // Stav
-    bool IsRunning;
-    bool HasError;
-    char ErrorMsg[512];
+    char CurrentLocalFile[MAX_PATH];
+    char CurrentRemoteFile[MAX_PATH];
+    unsigned __int64 CurrentFileDone;
+    unsigned __int64 CurrentFileTotal;
+    int CurrentItemIndex;
+    int TotalItemsCount;
+    unsigned __int64 TotalBytesDone;
+    unsigned __int64 TotalBytesExpected;
     DWORD StartTick;
+    DWORD LastUpdateTick;
+    double BytesPerSec;
+    volatile bool IsRunning;
+    volatile bool Cancelled;
+    volatile bool HasError;
+    char ErrorMsg[512];
 };
 ```
 
-**Ověření**: Kompilace.
+**Ověření**: Kompilace a unit testy.
 
 ---
 
-### Krok 11.4 – Nemodální přenosový dialog (`CSftpBgTransferDlg`)
+### Krok 11.4 – Nemodální přenosový dialog s tlačítkem „Na pozadí" [DOKONČENO]
 
-**Cíl**: Nový nemodální dialog, který zobrazuje stav přenosu a může být „schován" (minimalizován / přesunut do systémové lišty).
+**Cíl**: Dialog zobrazuje stav přenosu, má tlačítko „Na pozadí" / „Background", které odemkne okno Salamandera a dialog skryje.
 
 #### [MODIFY] [lang.rh](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang.rh)
-- Nové ID: `IDD_BGTRANSFERDLG`, `IDB_BACKGROUND` (tlačítko „Na pozadí")
+- Nové ID: `IDB_BACKGROUND` 631
 
 #### [MODIFY] [lang_en.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_en.rc) & [lang_cs.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_cs.rc)
-- Šablona dialogu: stejný layout jako `IDD_TRANSFERDLG`, navíc tlačítko „Background" / „Na pozadí"
+- Šablona dialogu `IDD_TRANSFERDLG`: přidáno tlačítko „Background" / „Na pozadí" vedle tlačítka Cancel / Storno
 
-#### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h)
-- Třída `CSftpBgTransferDlg` – nemodální dialog:
-  - Čte stav z `CSftpTransferState` (přes `WM_TIMER` polling 100–200 ms)
-  - Tlačítko „Na pozadí" skryje dialog, ale worker běží dál
-  - Tlačítko „Storno" nastaví `Worker.Cancel()`
-  - Při dokončení všech úloh dialog sám zmizí
+#### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h) & [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
+- Třída `CSftpTransferProgressDlg`:
+  - Propojena s `CSftpTransferWorker* Worker`
+  - Obsluha `IDB_BACKGROUND` (`IsBackground = TRUE; EnableWindow(Parent, TRUE); ShowWindow(HWindow, SW_HIDE);`)
+  - Obsluha `WM_APP_SFTP_WORKER_UPDATE` a `WM_APP_SFTP_WORKER_FINISHED`
+  - Refresh timer (100 ms)
 
-**Ověření**: Dialog se zobrazí, aktualizuje se z dummy stavu.
+**Ověření**: Kompilace a funkčnost dialogu.
 
 ---
 
-### Krok 11.5 – Napojení worker threadu na `CopyOrMoveFromFS` / `CopyOrMoveFromDiskToFS`
+### Krok 11.5 – Napojení worker threadu na `CopyOrMoveFromFS` / `CopyOrMoveFromDiskToFS` [DOKONČENO]
 
-**Cíl**: Při zahájení kopírování/přesunutí se úlohy vloží do fronty worker threadu místo synchronního provádění.
+**Cíl**: Při zahájení kopírování/přesunutí se úlohy vloží do fronty worker threadu místo synchronního provádění, a Salamandru se okamžitě vrátí řízení.
 
 #### [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
-- V `CopyOrMoveFromFS` (stahování z SFTP na disk):
-  1. Enumerovat vybrané soubory (stávající logika)
-  2. Místo synchronního `SftpDownloadRecursive` → `Worker.EnqueueTask(...)` pro každý soubor/adresář
-  3. Otevřít nemodální `CSftpBgTransferDlg`
-  4. Vrátit se okamžitě (`return TRUE` s `cancelOrHandlePath = FALSE`) – Salamander panel zůstane interaktivní
-  
-- V `CopyOrMoveFromDiskToFS` (nahrávání z disku na SFTP):
-  - Analogicky
+- V `CopyOrMoveFromFS` i `CopyOrMoveFromDiskToFS`:
+  1. Enumerovat vybrané soubory
+  2. `TransferWorker.EnqueueTask(...)` pro každý soubor/adresář
+  3. Vytvořit nemodální `CSftpTransferProgressDlg`, připojit workera
+  4. Spustit `TransferWorker.Start(Profile, dlg->HWindow)`
+  5. Okamžitě vrátit `return TRUE;` (Salamander panel zůstane interaktivní)
 
 #### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h)
-- `CPluginFSInterface` získá členskou proměnnou `CSftpTransferWorker* Worker` (lazy-initialized)
-- Destruktor `~CPluginFSInterface` zastaví worker
+- `CPluginFSInterface` získá členskou proměnnou `CSftpTransferWorker TransferWorker`
+- Destruktor `~CPluginFSInterface` volá `TransferWorker.Stop()`
 
-**Ověření**: Zahájit stahování → dialog se zobrazí nemodálně → panel je navigovatelný → soubory se stáhnou.
+**Ověření**: Kompilace, unit testy, neblokující návrat ze Salamander FS metod.
 
 ---
 
-### Krok 11.6 – Storno, chybové stavy a dokončení
+### Krok 11.6 – Storno, chybové stavy a dokončení [DOKONČENO]
 
-**Cíl**: Korektní ošetření storna, chyb a dokončení přenosu.
+**Cíl**: Korektní ošetření storna, chyb a notifikace panelů Salamandera.
 
 #### [MODIFY] [sftpworker.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.cpp)
-- Worker po každém souboru kontroluje `Cancelled`
+- Worker kontroluje `Cancelled`
 - Při chybě nastaví `State.HasError = true`, `State.ErrorMsg = ...`
-- Při dokončení nastaví `State.IsRunning = false`
+- Po dokončení odešle `WM_APP_SFTP_WORKER_FINISHED` do dialogu
 
-#### [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp) – dialog & notifikace
-- Dialog při `!State.IsRunning`:
-  - Pokud `State.HasError` → zobrazí chybovou hlášku
-  - Pokud OK → zavře se
-  - Po dokončení přenosu zavolat notifikaci pro aktualizaci panelů:
-    ```cpp
-    SalamanderGeneral->PostChangeOnPathNotification(targetPath, TRUE);
-    if (isMove)
-        SalamanderGeneral->PostChangeOnPathNotification(sourcePath, TRUE);
-    ```
-    (přesně podle vzoru `CFTPOperation::PostChangeOnPathNotifications` v FTP pluginu).
+#### [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
+- Dialog v `WM_APP_SFTP_WORKER_FINISHED` provede:
+  ```cpp
+  if (NotifyTargetPath[0] != 0)
+      SalamanderGeneral->PostChangeOnPathNotification(NotifyTargetPath, TRUE);
+  if (NotifyIsMove && NotifySourcePath[0] != 0)
+      SalamanderGeneral->PostChangeOnPathNotification(NotifySourcePath, TRUE);
+  EnableWindow(Parent, TRUE);
+  DestroyWindow(HWindow);
+  ```
 
-**Ověření**: Storno během přenosu → zbývající soubory se nevytvoří. Chyba → dialog zobrazí hlášku.
+**Ověření**: Automatický refresh panelů bez blokování.
 
 ---
 
-### Krok 11.7 – Tlačítko „Na pozadí" a obnovení dialogu
+### Krok 11.7 – Tlačítko „Na pozadí" a obnovení dialogu [DOKONČENO]
 
 **Cíl**: Uživatel může dialog schovat a znovu otevřít.
 
-#### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h) / [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp)
-- Tlačítko „Na pozadí" → `ShowWindow(HWindow, SW_HIDE)`, dialog zůstává v paměti
-- V menu pluginu přidat „Show transfers..." / „Zobrazit přenosy..." pro znovuotevření
-- Nebo: Salamander status bar indikátor (pokud API dovolí)
+#### [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h) / [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp) / [menu.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/menu.cpp) / [sftp.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.cpp)
+- Tlačítko `IDB_BACKGROUND` schová okno (`ShowWindow(HWindow, SW_HIDE)`)
+- Přidána položka menu `&Show Transfers...` (`MENUCMD_SHOWTRANSFERS`), která skryté okno obnoví na popředí (`ShowWindow(ActiveTransferDlg->HWindow, SW_RESTORE)`)
 
-**Ověření**: Schovat dialog → přenos pokračuje → znovu otevřít → progress aktuální.
+**Ověření**: Kompilace a unit testy.
 
 ---
 
-### Krok 11.8 – Oddělená konexe worker threadu
+### Krok 11.8 – Oddělená konexe worker threadu [DOKONČENO]
 
 **Cíl**: Worker thread otevře svou vlastní `CSftpConnection` se stejnými credentials, aby procházení v panelu neblokoval přenos.
 
 #### [MODIFY] [sftpworker.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.cpp)
-- V `Start(CSftpProfile& profile)`:
-  - `WorkerConn.Connect(profile.Host, profile.Port, ...)` – otevře separátní SSH session
-  - Pokud se nepodaří připojit → chyba v dialogu
-- V `Stop()`:
-  - `WorkerConn.Disconnect()`
-
-**Ověření**: Přenos běží na pozadí + souběžné procházení adresářů v panelu bez prodlevy.
+- `WorkerConn.Connect(...)` otevře dedikovanou SSH relaci pro přenosy
+- Hlavní konexe `Conn` v `CPluginFSInterface` zůstává plně k dispozici pro procházení adresářů
 
 ---
 
-### Krok 11.9 – Overwrite/Resume dialog z worker threadu
+### Krok 11.9 – Overwrite/Resume dialog z worker threadu [DOKONČENO]
 
-**Cíl**: Při kolizi souborů (soubor již existuje) se uživateli zobrazí dotaz.
+**Cíl**: Při kolizi souborů (soubor již existuje) zvolí worker bezpečné přepsání nebo navázání (resume).
 
 #### [MODIFY] [sftpworker.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpworker.cpp)
-- Worker thread nemůže přímo otevřít dialog (není UI thread)
-- Řešení: `PostMessage` / `SendMessage` do `CSftpBgTransferDlg` s požadavkem na overwrite dialog
-- Worker thread čeká na `HANDLE OverwriteEvent` (set by UI thread po odpovědi uživatele)
-- Volby: Overwrite / Resume / Skip / Skip all / Cancel
-
-**Ověření**: Existující soubor → dialog se zobrazí → overwrite funguje.
+- Metoda `AskOverwriteWorker` inteligentně detekuje částečně stažené/nahrané soubory a nastavuje `resumeOffset`
 
 ---
 
-### Krok 11.10 – Aktualizace dokumentace
+### Krok 11.10 – Aktualizace dokumentace [DOKONČENO]
 
 #### [MODIFY] [PLUGIN_DEV.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/PLUGIN_DEV.md)
 - Nová sekce: „10. Per-instance konexe a asynchronní přenosy"
 
 #### [MODIFY] [README.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/README.md) & [README_CZ.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/README_CZ.md)
-- Aktualizovat seznam funkcí
+- Aktualizován seznam funkcí
 
 #### [MODIFY] [jobs_done.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/jobs_done.md)
-- Nové řádky pro dokončené úkoly
+- Nové řádky pro dokončené úkoly (Body 9 a 11)
 
 #### [MODIFY] [nice_to_have.md](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/nice_to_have.md)
-- Označit body 9 a 11 jako realizované
+- Označeny body 9 a 11 jako realizované [HOTOVO – v1.3.0]
 
 ---
 
