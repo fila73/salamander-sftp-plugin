@@ -861,12 +861,16 @@ static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 d
     return true;
 }
 
-static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0, const char* connName = NULL)
+static CSftpConnection* g_ProgConn = NULL;
+
+static void SftpProgressBegin(HWND parent, bool upload = false, const char* fromPath = NULL, const char* toPath = NULL, int totalFiles = 1, unsigned __int64 totalExpectedBytes = 0, const char* connName = NULL, CSftpConnection* conn = NULL)
 {
     if (connName != NULL)
         lstrcpynA(g_ProgressConnName, connName, sizeof(g_ProgressConnName));
     else
         g_ProgressConnName[0] = 0;
+
+    g_ProgConn = conn;
 
     g_ProgMainWnd = parent;
     HWND pw;
@@ -885,7 +889,8 @@ static void SftpProgressBegin(HWND parent, bool upload = false, const char* from
         SetForegroundWindow(g_ProgDlg->HWindow);
         g_ProgDlg->SetOperationInfo(upload, fromPath, toPath, totalFiles, totalExpectedBytes);
         g_OvrParent = g_ProgDlg->HWindow;
-        CSftpConnection::SetProgressCallback(SftpProgressCallback, NULL);
+        if (g_ProgConn != NULL)
+            g_ProgConn->SetProgressCallback(SftpProgressCallback, NULL);
     }
     else
     {
@@ -898,7 +903,11 @@ static void SftpProgressBegin(HWND parent, bool upload = false, const char* from
 
 static void SftpProgressEnd()
 {
-    CSftpConnection::SetProgressCallback(NULL, NULL);
+    if (g_ProgConn != NULL)
+    {
+        g_ProgConn->SetProgressCallback(NULL, NULL);
+        g_ProgConn = NULL;
+    }
     g_ProgressConnName[0] = 0;
     if (g_ProgDlg != NULL)
     {
@@ -2376,7 +2385,7 @@ void SftpSyncDir(HWND parent, CPluginFSInterface* fs, const char* remoteDir, con
         return;
     const char* connName = fs->Profile.Name[0] != 0 ? fs->Profile.Name : fs->Profile.Host;
     bool isUpload = (direction == 1);
-    SftpProgressBegin(parent, isUpload, isUpload ? localDir : remoteDir, isUpload ? remoteDir : localDir, 1, 0, connName);
+    SftpProgressBegin(parent, isUpload, isUpload ? localDir : remoteDir, isUpload ? remoteDir : localDir, 1, 0, connName, &fs->Conn);
     g_SyncMode = 1;
     bool ok;
     if (direction == 0)
@@ -2746,7 +2755,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         BOOL okF = TRUE;
         const CFileData* ff;
         const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
-        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF, 0, connName);
+        SftpProgressBegin(parent, false, Path, remoteTargetDir, totalFilesF, 0, connName, &Conn);
         while (1)
         {
             if (SftpIsCancelled())
@@ -2806,7 +2815,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     BOOL success = TRUE;
     const CFileData* f;
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
-    SftpProgressBegin(parent, false, Path, target, totalFiles, 0, connName);
+    SftpProgressBegin(parent, false, Path, target, totalFiles, 0, connName, &Conn);
     while (1)
     {
         if (SftpIsCancelled())
@@ -2923,7 +2932,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     BOOL success = TRUE;
     int totalFiles = (sourceFiles == 0 && sourceDirs == 0) ? 1 : (sourceFiles + sourceDirs);
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
-    SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles, 0, connName);
+    SftpProgressBegin(parent, true, sourcePath, remoteDir, totalFiles, 0, connName, &Conn);
     while ((name = next(NULL, 0, &dosName, &isDir, &size, &attr, &lastWrite, nextParam, NULL)) != NULL)
     {
         if (SftpIsCancelled())

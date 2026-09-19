@@ -17,8 +17,6 @@
 #include <openssl/err.h>
 #endif
 
-CSftpConnection::ProgressFn CSftpConnection::Progress = nullptr;
-void* CSftpConnection::ProgressCtx = nullptr;
 CSftpConnection::HostKeyVerifyFn CSftpConnection::HostKeyCb = nullptr;
 void* CSftpConnection::HostKeyCtx = nullptr;
 CSftpConnection::KbdPromptFn CSftpConnection::KbdCb = nullptr;
@@ -66,7 +64,7 @@ bool CSftpConnection::ReportProgress(const char* name, unsigned __int64 done, un
 }
 
 CSftpConnection::CSftpConnection()
-    : ScpMode(false), Sock(INVALID_SOCKET), Session(nullptr), Sftp(nullptr) {}
+    : ScpMode(false), Sock(INVALID_SOCKET), Session(nullptr), Sftp(nullptr), Progress(nullptr), ProgressCtx(nullptr) {}
 
 CSftpConnection::~CSftpConnection() { Disconnect(); }
 

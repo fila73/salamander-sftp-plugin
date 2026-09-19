@@ -89,7 +89,7 @@ public:
     // Progress callback: called during transfer. Returns true = continue, false = abort.
     // done/total are bytes of the current file.
     typedef bool (*ProgressFn)(void* ctx, const char* name, unsigned __int64 done, unsigned __int64 total);
-    static void SetProgressCallback(ProgressFn cb, void* ctx) { Progress = cb; ProgressCtx = ctx; }
+    void SetProgressCallback(ProgressFn cb, void* ctx) { Progress = cb; ProgressCtx = ctx; }
 
     // Host key verification. status: 0 = unknown server, 1 = CHANGED key (possible attack).
     // Return: 0 = reject, 1 = trust once, 2 = trust and save.
@@ -146,7 +146,7 @@ private:
     std::string ErrorMsg;
     std::string SftpServerCmd;
 
-    static ProgressFn Progress;
-    static void* ProgressCtx;
+    ProgressFn Progress;
+    void* ProgressCtx;
     bool ReportProgress(const char* name, unsigned __int64 done, unsigned __int64 total);
 };
