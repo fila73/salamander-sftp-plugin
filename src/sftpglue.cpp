@@ -141,17 +141,16 @@ void SftpJoin(const char* base, const char* name, char* out, int outSize)
     int bl = (int)strlen(b);
     if (bl > 0 && b[bl - 1] == '/')
         b[bl - 1] = 0; // remove trailing slash (except root "" -> joins to "/name")
-    _snprintf_s(out, outSize, _TRUNCATE, "%s/%s", b, name);
+    _snprintf_s(out, outSize, _TRUNCATE, "%s/%s", b, (name && *name) ? name : "");
     SftpNormalize(out);
 }
 
 void SftpParent(const char* path, char* out, int outSize)
 {
-    lstrcpyn(out, path, outSize);
-    SftpNormalize(out);
+    lstrcpyn(out, (path && *path) ? path : "/", outSize);
     char* slash = strrchr(out, '/');
     if (slash == out)
-        out[1] = 0; // parent of root is root
+        *(slash + 1) = 0; // keep root "/"
     else if (slash != NULL)
         *slash = 0;
 }
@@ -159,8 +158,8 @@ void SftpParent(const char* path, char* out, int outSize)
 bool SftpIsSamePath(const char* a, const char* b)
 {
     char na[MAX_PATH], nb[MAX_PATH];
-    lstrcpyn(na, a, MAX_PATH);
-    lstrcpyn(nb, b, MAX_PATH);
+    lstrcpyn(na, a ? a : "", MAX_PATH);
+    lstrcpyn(nb, b ? b : "", MAX_PATH);
     SftpNormalize(na);
     SftpNormalize(nb);
     return strcmp(na, nb) == 0; // SFTP is case-sensitive
@@ -169,7 +168,7 @@ bool SftpIsSamePath(const char* a, const char* b)
 bool SftpIsRoot(const char* path)
 {
     char n[MAX_PATH];
-    lstrcpyn(n, path, MAX_PATH);
+    lstrcpyn(n, path ? path : "", MAX_PATH);
     SftpNormalize(n);
     return strcmp(n, "/") == 0;
 }

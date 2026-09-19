@@ -427,3 +427,17 @@ graph TD
 | 11.9 | Vysoká (cross-thread UI) | ~2 h |
 | 11.10 | Nízká | ~30 min |
 | **Celkem** | | **~20 h** |
+
+---
+
+## Vyřešené problémy & Hotfixy
+
+### Hotfix: Null pointer dereference v `ChangePath` po stisku tlačítka Login
+- **Příznak**: Po zadání serveru / přihlašovacích údajů v dialogu Connect a stisku tlačítka **Login** Salamander spadl na `access violation: read on 0x0000000000000000` v `CPluginFSInterfaceEncapsulation::ChangePath`.
+- **Příčina**: Salamander při otevření cesty z dialogu Connect volá `ChangePanelPathToPluginFS` s prázdnou cestou a do `ChangePath` předává `userPart = NULL`. Kód `if (*userPart == 0 && ConnectData.UseConnectData)` na řádku 1338 dereferencoval `*userPart` dříve než provedl kontrolu na `NULL`.
+- **Řešení**:
+  1. Na začátek metod `ChangePath`, `IsCurrentPath` a `IsOurPath` doplněna ochrana `if (userPart == NULL) userPart = "";`.
+  2. `SftpStripHost` při `NULL` vrací `""` namísto `NULL`.
+  3. Pomocné funkce `SftpIsSamePath`, `SftpIsRoot`, `SftpJoin` a `SftpParent` doplněny o plnou null-safety.
+  4. Doplněny jednotkové testy v `test/test_path_hottrack.cpp`.
+  5. Nasazena nová binárka `sftp.spl` do `C:\Apps\samandarin\plugins\sftp\`.

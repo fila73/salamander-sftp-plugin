@@ -199,3 +199,8 @@ Od verze **v1.3.0** plugin přechází z globálního singletonu na plně izolov
 - **Tlačítko „Na pozadí" (`IDB_BACKGROUND`)**: Uživatel může dialog kdykoli minimalizovat či skrýt (`SW_HIDE`), přičemž přenos pokračuje plnou rychlostí v pozadí.
 - **Znovuotevření dialogu**: V menu pluginu je k dispozici položka **„Show Transfers..."** (`MENUCMD_SHOWTRANSFERS`), která skrytý dialog přenese zpět do popředí.
 - **Notifikace změn**: Po dokončení všech úloh ve frontě worker dialog automaticky zavolá `SalamanderGeneral->PostChangeOnPathNotification` pro cíl i zdroj (u operací přesunutí / Move).
+
+### 4. Null-safety při volání virtuálního FS (`ChangePath`, `IsCurrentPath`, `IsOurPath`):
+- Salamander při volání `ChangePanelPathToPluginFS` s prázdnou cestou (např. po stisku Login v Connect dialogu) předává do `ChangePath` parametr `userPart = NULL`.
+- Všechny metody FS musí striktně ověřovat `if (userPart == NULL) userPart = "";` před jakoukoli dereferencí řetězce nebo předáním do stringových a path-helper funkcí (`SftpStripHost`, `SftpIsSamePath`, `SftpIsRoot`, `SftpJoin`, `SftpParent`).
+- `SftpStripHost` při `NULL` vždy vrací prázdný řetězec `""` a nikdy `NULL`.

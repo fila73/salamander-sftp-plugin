@@ -1172,7 +1172,9 @@ static void SftpHostPrefix(const CSftpProfile& prof, char* out, int outSize)
 // from "//user@host/path" returns pointer to start of remote path (after host); otherwise returns input
 static const char* SftpStripHost(const char* userPart)
 {
-    if (userPart != NULL && (userPart[0] == '/' || userPart[0] == '\\') &&
+    if (userPart == NULL)
+        return "";
+    if ((userPart[0] == '/' || userPart[0] == '\\') &&
         (userPart[1] == '/' || userPart[1] == '\\'))
     {
         const char* p = userPart + 2;
@@ -1287,12 +1289,16 @@ CPluginFSInterface::GetFullFSPath(HWND parent, const char* fsName, char* path, i
 BOOL WINAPI
 CPluginFSInterface::IsCurrentPath(int currentFSNameIndex, int fsNameIndex, const char* userPart)
 {
+    if (userPart == NULL)
+        userPart = "";
     return currentFSNameIndex == fsNameIndex && SftpIsSamePath(Path, SftpStripHost(userPart));
 }
 
 BOOL WINAPI
 CPluginFSInterface::IsOurPath(int currentFSNameIndex, int fsNameIndex, const char* userPart)
 {
+    if (userPart == NULL)
+        userPart = "";
     if (ConnectData.UseConnectData)
         return FALSE; // new connection from Connect dialog
     // one connection serves the entire server tree
@@ -1304,6 +1310,9 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
                                const char* userPart, char* cutFileName, BOOL* pathWasCut,
                                BOOL forceRefresh, int mode)
 {
+    if (userPart == NULL)
+        userPart = "";
+
     if (mode != 3 && (pathWasCut != NULL || cutFileName != NULL))
     {
         TRACE_E("Incorrect value of 'mode' in CPluginFSInterface::ChangePath().");
@@ -1940,7 +1949,7 @@ CPluginFSInterface::QuickRename(const char* fsName, int mode, HWND parent, CFile
 void WINAPI
 CPluginFSInterface::AcceptChangeOnPathNotification(const char* fsName, const char* path, BOOL includingSubdirs)
 {
-    if (Path[0] == 0)
+    if (Path[0] == 0 || path == NULL || path[0] == 0)
         return;
     // 'path' can be either user-part ("/dir") or full FS path ("fsName:/dir") -> trim prefix
     const char* userPart = path;
