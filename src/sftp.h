@@ -118,6 +118,7 @@ char* LoadStr(int resID);
 #define MENUCMD_CALCSIZE 21  // calculate directory sizes on server
 #define MENUCMD_SYNC 22      // synchronize directory with local
 #define MENUCMD_EXECUTEFILE 23 // execute file on server (./filename)
+#define MENUCMD_SHOWTRANSFERS 24 // show active transfers dialog
 
 //
 // ****************************************************************************
@@ -659,11 +660,13 @@ public:
     CSftpConnection Conn;            // per-instance SSH/SFTP connection
     CSftpProfile    Profile;         // per-instance connection profile
     CSftpTransferWorker TransferWorker; // background transfer worker
+    CSftpTransferProgressDlg* ActiveTransferDlg; // currently active transfer dialog (if any)
 
     CSftpConnection& GetConn() { return Conn; }
     CSftpProfile& GetProfile() { return Profile; }
     bool EnsureConnected(HWND parent);
     void HostPrefix(char* out, int outSize) const;
+    void ShowTransferDialog(HWND parent);
 
 public:
     CPluginFSInterface();

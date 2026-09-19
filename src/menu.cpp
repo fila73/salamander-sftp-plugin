@@ -207,6 +207,14 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
         return TRUE;
     }
 
+    case MENUCMD_SHOWTRANSFERS:
+    {
+        CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
+        if (fs != NULL)
+            fs->ShowTransferDialog(parent);
+        return TRUE;
+    }
+
     case MENUCMD_ALWAYS:
     {
         /*

@@ -1095,12 +1095,26 @@ CPluginFSInterface::CPluginFSInterface()
     memset(&Profile, 0, sizeof(Profile));
     Profile.Port = 22;
     Profile.Valid = false;
+    ActiveTransferDlg = NULL;
 }
 
 CPluginFSInterface::~CPluginFSInterface()
 {
     TransferWorker.Stop();
     Conn.Disconnect();
+}
+
+void CPluginFSInterface::ShowTransferDialog(HWND parent)
+{
+    if (ActiveTransferDlg != NULL && IsWindow(ActiveTransferDlg->HWindow))
+    {
+        ShowWindow(ActiveTransferDlg->HWindow, SW_RESTORE);
+        SetForegroundWindow(ActiveTransferDlg->HWindow);
+    }
+    else
+    {
+        SalamanderGeneral->SalMessageBox(parent, "No active background transfer in progress.", LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
+    }
 }
 
 bool CPluginFSInterface::EnsureConnected(HWND parent)
@@ -3018,6 +3032,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     }
 
     dlg->AttachWorker(&TransferWorker);
+    ActiveTransferDlg = dlg;
     TransferWorker.Start(Profile, dlg->HWindow);
 
     targetPath[0] = 0;
@@ -3118,6 +3133,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     }
 
     dlg->AttachWorker(&TransferWorker);
+    ActiveTransferDlg = dlg;
     TransferWorker.Start(Profile, dlg->HWindow);
 
     return TRUE;

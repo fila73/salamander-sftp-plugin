@@ -862,6 +862,8 @@ CPluginInterface::Connect(HWND parent, CSalamanderConnectAbstract* salamander)
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, "S&ynchronize Directory...", 0, MENUCMD_SYNC, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
+    salamander->AddMenuItem(-1, "&Show Transfers...", 0, MENUCMD_SHOWTRANSFERS, FALSE,
+                            MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, NULL, 0, 0, FALSE, 0, 0, MENU_SKILLLEVEL_ALL); // separator
     salamander->AddMenuItem(-1, "&Disconnect", 0, MENUCMD_DISCONNECT_ACTIVE, FALSE, MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
 #endif // !defined(ENABLE_DYNAMICMENUEXT)
