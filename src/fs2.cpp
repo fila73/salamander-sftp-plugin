@@ -407,6 +407,7 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     TotalFilesCount = 1;
 
     Worker = NULL;
+    OwnsWorker = false;
     FS = NULL;
     IsBackground = FALSE;
     ConnName[0] = 0;
@@ -420,9 +421,9 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
 CSftpTransferProgressDlg::~CSftpTransferProgressDlg()
 {
     DetachWorker();
-    if (FS != NULL && FS->ActiveTransferDlg == this)
+    if (FS != NULL)
     {
-        FS->ActiveTransferDlg = NULL;
+        FS->UnregisterTransferDlg(this);
     }
     FS = NULL;
 }
@@ -451,9 +452,17 @@ void CSftpTransferProgressDlg::DetachWorker()
     }
     if (Worker != NULL)
     {
-        Worker->SetDlgHwnd(NULL);
-        Worker->SetObserver(NULL);
+        CSftpTransferWorker* w = Worker;
+        bool owns = OwnsWorker;
         Worker = NULL;
+        OwnsWorker = false;
+        w->SetDlgHwnd(NULL);
+        w->SetObserver(NULL);
+        if (owns)
+        {
+            w->Stop();
+            delete w;
+        }
     }
 }
 
@@ -670,9 +679,10 @@ void CSftpTransferProgressDlg::UpdateTotalProgress(int fileIndex, unsigned __int
     ProgressCacheIsDirty = TRUE;
 }
 
-void CSftpTransferProgressDlg::AttachWorker(CSftpTransferWorker* worker)
+void CSftpTransferProgressDlg::AttachWorker(CSftpTransferWorker* worker, bool ownsWorker)
 {
     Worker = worker;
+    OwnsWorker = ownsWorker;
     if (Worker != NULL)
     {
         Worker->SetObserver(this);
@@ -935,15 +945,23 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         KillTimer(HWindow, 101);
         if (Worker != NULL)
         {
-            Worker->SetDlgHwnd(NULL);
-            Worker->SetObserver(NULL);
+            CSftpTransferWorker* w = Worker;
+            bool owns = OwnsWorker;
             Worker = NULL;
+            OwnsWorker = false;
+            w->SetDlgHwnd(NULL);
+            w->SetObserver(NULL);
+            if (owns)
+            {
+                w->Stop();
+                delete w;
+            }
         }
         FileProgressBar = NULL;
         TotalProgressBar = NULL;
-        if (FS != NULL && FS->ActiveTransferDlg == this)
+        if (FS != NULL)
         {
-            FS->ActiveTransferDlg = NULL;
+            FS->UnregisterTransferDlg(this);
         }
         FS = NULL;
         break;
@@ -968,12 +986,25 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
                     ShowWindow(HWindow, SW_SHOW);
                 SalamanderGeneral->SalMessageBox(HWindow, snap.ErrorMsg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
             }
-            Worker->Stop();
+            CSftpTransferWorker* w = Worker;
+            bool owns = OwnsWorker;
             Worker = NULL;
+            OwnsWorker = false;
+            w->SetDlgHwnd(NULL);
+            w->SetObserver(NULL);
+            if (owns)
+            {
+                w->Stop();
+                delete w;
+            }
+            else
+            {
+                w->Stop();
+            }
         }
-        if (FS != NULL && FS->ActiveTransferDlg == this)
+        if (FS != NULL)
         {
-            FS->ActiveTransferDlg = NULL;
+            FS->UnregisterTransferDlg(this);
         }
         if (NotifyTargetPath[0] != 0)
             SalamanderGeneral->PostChangeOnPathNotification(NotifyTargetPath, TRUE);
@@ -1277,32 +1308,69 @@ CPluginFSInterface::CPluginFSInterface()
     ActiveTransferDlg = NULL;
 }
 
+void CPluginFSInterface::RegisterTransferDlg(CSftpTransferProgressDlg* dlg)
+{
+    if (dlg == NULL)
+        return;
+    for (size_t i = 0; i < ActiveTransferDlgs.size(); i++)
+    {
+        if (ActiveTransferDlgs[i] == dlg)
+            return;
+    }
+    ActiveTransferDlgs.push_back(dlg);
+    ActiveTransferDlg = dlg;
+}
+
+void CPluginFSInterface::UnregisterTransferDlg(CSftpTransferProgressDlg* dlg)
+{
+    for (auto it = ActiveTransferDlgs.begin(); it != ActiveTransferDlgs.end(); ++it)
+    {
+        if (*it == dlg)
+        {
+            ActiveTransferDlgs.erase(it);
+            break;
+        }
+    }
+    ActiveTransferDlg = ActiveTransferDlgs.empty() ? NULL : ActiveTransferDlgs.back();
+}
+
 CPluginFSInterface::~CPluginFSInterface()
 {
-    if (ActiveTransferDlg != NULL)
+    while (!ActiveTransferDlgs.empty())
     {
-        ActiveTransferDlg->DetachWorker();
-        ActiveTransferDlg->SetFS(NULL);
-        if (IsWindow(ActiveTransferDlg->HWindow))
+        CSftpTransferProgressDlg* dlg = ActiveTransferDlgs.back();
+        ActiveTransferDlgs.pop_back();
+        if (dlg != NULL)
         {
-            DestroyWindow(ActiveTransferDlg->HWindow);
+            dlg->SetFS(NULL);
+            dlg->DetachWorker();
+            if (IsWindow(dlg->HWindow))
+            {
+                DestroyWindow(dlg->HWindow);
+            }
         }
-        ActiveTransferDlg = NULL;
     }
+    ActiveTransferDlg = NULL;
     TransferWorker.Stop();
     Conn.Disconnect();
 }
 
 void CPluginFSInterface::ShowTransferDialog(HWND parent)
 {
-    if (ActiveTransferDlg != NULL && IsWindow(ActiveTransferDlg->HWindow))
+    BOOL shown = FALSE;
+    for (size_t i = 0; i < ActiveTransferDlgs.size(); i++)
     {
-        ShowWindow(ActiveTransferDlg->HWindow, SW_RESTORE);
-        SetForegroundWindow(ActiveTransferDlg->HWindow);
+        CSftpTransferProgressDlg* dlg = ActiveTransferDlgs[i];
+        if (dlg != NULL && IsWindow(dlg->HWindow))
+        {
+            ShowWindow(dlg->HWindow, SW_RESTORE);
+            SetForegroundWindow(dlg->HWindow);
+            shown = TRUE;
+        }
     }
-    else
+    if (!shown)
     {
-        SalamanderGeneral->SalMessageBox(parent, "No active background transfer in progress.", LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
+        SalamanderGeneral->SalMessageBox(parent, LoadStr(IDS_NOTRANSFERS_ACTIVE), LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
     }
 }
 
@@ -3416,11 +3484,17 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     const CFileData* f;
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
 
-    TransferWorker.Reset();
+    CSftpTransferWorker* worker = new CSftpTransferWorker();
+    if (worker == NULL)
+    {
+        cancelOrHandlePath = TRUE;
+        return FALSE;
+    }
 
     CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
     if (dlg == NULL)
     {
+        delete worker;
         cancelOrHandlePath = TRUE;
         return FALSE;
     }
@@ -3428,6 +3502,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     if (dlg->Create() == NULL)
     {
         delete dlg;
+        delete worker;
         cancelOrHandlePath = TRUE;
         return FALSE;
     }
@@ -3457,16 +3532,16 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         task.IsDirectory = (isDir != 0);
         task.DeleteSourceOnSuccess = (!copy);
 
-        TransferWorker.EnqueueTask(task);
+        worker->EnqueueTask(task);
 
         if (focused)
             break;
     }
 
     dlg->SetFS(this);
-    dlg->AttachWorker(&TransferWorker);
-    ActiveTransferDlg = dlg;
-    TransferWorker.Start(Profile, dlg->HWindow);
+    dlg->AttachWorker(worker, true);
+    RegisterTransferDlg(dlg);
+    worker->Start(Profile, dlg->HWindow);
 
     targetPath[0] = 0;
     cancelOrHandlePath = FALSE;
@@ -3525,11 +3600,18 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     int totalFiles = (sourceFiles == 0 && sourceDirs == 0) ? 1 : (sourceFiles + sourceDirs);
     const char* connName = Profile.Name[0] != 0 ? Profile.Name : Profile.Host;
 
-    TransferWorker.Reset();
+    CSftpTransferWorker* worker = new CSftpTransferWorker();
+    if (worker == NULL)
+    {
+        if (invalidPathOrCancel != NULL)
+            *invalidPathOrCancel = TRUE;
+        return FALSE;
+    }
 
     CSftpTransferProgressDlg* dlg = new CSftpTransferProgressDlg(parent, ooStandard);
     if (dlg == NULL)
     {
+        delete worker;
         if (invalidPathOrCancel != NULL)
             *invalidPathOrCancel = TRUE;
         return FALSE;
@@ -3538,6 +3620,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     if (dlg->Create() == NULL)
     {
         delete dlg;
+        delete worker;
         if (invalidPathOrCancel != NULL)
             *invalidPathOrCancel = TRUE;
         return FALSE;
@@ -3570,13 +3653,13 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
         task.IsDirectory = (isDir != 0);
         task.DeleteSourceOnSuccess = (!copy);
 
-        TransferWorker.EnqueueTask(task);
+        worker->EnqueueTask(task);
     }
 
     dlg->SetFS(this);
-    dlg->AttachWorker(&TransferWorker);
-    ActiveTransferDlg = dlg;
-    TransferWorker.Start(Profile, dlg->HWindow);
+    dlg->AttachWorker(worker, true);
+    RegisterTransferDlg(dlg);
+    worker->Start(Profile, dlg->HWindow);
 
     return TRUE;
 }

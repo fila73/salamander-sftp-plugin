@@ -43,9 +43,9 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Možnost přiřadit v nastavení připojení barvu profilu (např. červená pro produkci, oranžová pro staging, zelená pro dev/test) a při otevření relace automaticky obarvit příslušný tab v Samandarinu.
 - **Přínos**: Okamžité vizuální rozlišení prostředí a prevence nechtěných zásahů na produkčních strojích.
 
-### 11. Plně asynchronní nemodální přenosový dialog s během na pozadí (Phase B) [HOTOVO – v1.3.0]
+### 11. Plně asynchronní nemodální přenosový dialog s během na pozadí & souběžné přenosy (Phase B) [HOTOVO – v1.3.1]
 - **Popis**: Rozšíření přenosového dialogu o běh na pozadí (tlačítko 'Na pozadí' / 'Background') a vyčlenění přenosů do dedikovaného pracovního vlákna (`CSftpTransferWorker`) s frontou úloh. Salamander panely zůstávají plně interaktivní i během stahování a nahrávání velkých objemů dat.
-- **Stav**: Kompletně dokončeno (Kroky 11.1 až 11.10). Dedikovaná worker SSH relace `WorkerConn`, fronta `CSftpTransferTask`, thread-safe stav `CSftpTransferState`, nemodální dialog s tlačítkem „Na pozadí", znovuzobrazení přes menu „Show Transfers...", automatické notifikace panelů Salamandera přes `PostChangeOnPathNotification`.
+- **Stav**: Kompletně dokončeno (Kroky 11.1 až 11.10). Dedikovaná worker SSH relace `WorkerConn`, fronta `CSftpTransferTask`, thread-safe stav `CSftpTransferState`, nemodální dialog s tlačítkem „Na pozadí", znovuzobrazení přes menu „Show Transfers...", automatické notifikace panelů Salamandera přes `PostChangeOnPathNotification`. Nyní rozšířeno o **plnou souběžnost více přenosů (Per-transfer Worker instances)**: Každá operace má vlastní nezávislý `CSftpTransferWorker` a dialog s příznakem `OwnsWorker`, `CPluginFSInterface` eviduje více oken v `ActiveTransferDlgs` a zamezuje kolizím či pádům při zavření aplikace.
 
 ### 12. Přenosy mezi dvěma SFTP servery (Server-to-Server Copy) [HOTOVO – v1.3.1]
 - **Popis**: Podpora přímého kopírování/přesouvání souborů mezi dvěma otevřenými SFTP panely (např. server A v levém panelu, server B v pravém panelu) pomocí transparentního dočasného lokálního bufferu (streaming download z A -> upload na B).

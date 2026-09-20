@@ -290,5 +290,33 @@ Při operacích přenosu v `CPluginFSInterface::CopyOrMoveFromFS` dochází k vy
    - **Dvoustranná notifikace změn**:
      - Po dokončení se vyvolá `SalamanderGeneral->PostChangeOnPathNotification` pro zdrojovou i cílovou cestu, což zajistí okamžitou aktualizaci obou otevřených panelů.
 
+---
 
+## 13. Nezávislé instance workerů pro souběžné přenosy na pozadí & životní cyklus dialogů
 
+Při souběžném spuštění více přenosů (stahování i nahrávání) v rámci téhož panelu nebo profilu nesmí docházet ke sdílení jediné instance `CSftpTransferWorker`:
+1. **Per-transfer Worker alokace**:
+   - V metodách `CopyOrMoveFromFS` a `CopyOrMoveFromDiskToFS` se pro každou operaci dynamicky vytvoří nový worker:
+     ```cpp
+     CSftpTransferWorker* worker = new CSftpTransferWorker();
+     ```
+   - Úlohy se zařadí do tohoto workeru a ten se předá dialogu s příznakem vlastnictví:
+     ```cpp
+     dlg->AttachWorker(worker, true);
+     RegisterTransferDlg(dlg);
+     worker->Start(Profile, dlg->HWindow);
+     ```
+2. **Vlastnictví workeru dialogem (`OwnsWorker`)**:
+   - `CSftpTransferProgressDlg` nese příznak `OwnsWorker`.
+   - V metodě `DetachWorker()`, při destrukci okna (`WM_DESTROY`) i při dokončení přenosu (`WM_APP_SFTP_WORKER_FINISHED`):
+     - Zruší se časovač (`KillTimer(HWindow, 101)`).
+     - Workeru se vynuluje HWND i observer.
+     - Pokud `OwnsWorker == true`, zavolá se `w->Stop()` a `delete w;`.
+     - Ukazatele se vynulují před uvolněním pro zamezení rekurzivního volání / double free.
+3. **Evidence dialogů (`ActiveTransferDlgs`) v FS rozhraní**:
+   - `CPluginFSInterface` udržuje `std::vector<CSftpTransferProgressDlg*> ActiveTransferDlgs`.
+   - Dialog se při spuštění registruje přes `FS->RegisterTransferDlg(dlg)` a při zániku odregistruje přes `FS->UnregisterTransferDlg(dlg)`.
+   - Metoda `ShowTransferDialog(HWND parent)` a příkaz `MENUCMD_SHOWTRANSFERS` iterují přes všechny aktivní dialogy a obnovují všechna minimalizovaná/skrytá okna.
+4. **Korektní teardown při zavření Salamandera (`~CPluginFSInterface`)**:
+   - Při ukončení Salamandera (`WM_USER_CLOSE_MAINWND`) probíhá destrukce všech instancí `CPluginFSInterface`.
+   - Destruktor prochází `ActiveTransferDlgs`, odpojuje worker dialogy (`dlg->SetFS(NULL)`, `dlg->DetachWorker()`) a bezpečně ničí okna (`DestroyWindow`), čímž je zamezeno pádům na neplatné ukazatele po uvolnění pluginu.

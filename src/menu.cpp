@@ -211,7 +211,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
     {
         // 1. Try active panel
         CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
-        if (fs != NULL && InterfaceForFS.IsOurFS(fs) && fs->ActiveTransferDlg != NULL)
+        if (fs != NULL && InterfaceForFS.IsOurFS(fs) && (fs->ActiveTransferDlg != NULL || !fs->ActiveTransferDlgs.empty()))
         {
             fs->ShowTransferDialog(parent);
             return TRUE;
@@ -219,7 +219,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
 
         // 2. Try inactive panel
         CPluginFSInterface* targetFs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_TARGET);
-        if (targetFs != NULL && InterfaceForFS.IsOurFS(targetFs) && targetFs->ActiveTransferDlg != NULL)
+        if (targetFs != NULL && InterfaceForFS.IsOurFS(targetFs) && (targetFs->ActiveTransferDlg != NULL || !targetFs->ActiveTransferDlgs.empty()))
         {
             targetFs->ShowTransferDialog(parent);
             return TRUE;
@@ -230,7 +230,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
         for (size_t i = 0; i < list.size(); i++)
         {
             CPluginFSInterface* candidate = (CPluginFSInterface*)list[i];
-            if (candidate != NULL && candidate->ActiveTransferDlg != NULL)
+            if (candidate != NULL && (candidate->ActiveTransferDlg != NULL || !candidate->ActiveTransferDlgs.empty()))
             {
                 candidate->ShowTransferDialog(parent);
                 return TRUE;

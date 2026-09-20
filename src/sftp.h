@@ -532,6 +532,7 @@ protected:
     int TotalFilesCount;
 
     CSftpTransferWorker* Worker;
+    bool OwnsWorker;
     CPluginFSInterface* FS;
     BOOL IsBackground;
     char ConnName[128];
@@ -554,7 +555,7 @@ public:
     BOOL GetWantCancel();
 
     void SetFS(CPluginFSInterface* fs) { FS = fs; }
-    void AttachWorker(CSftpTransferWorker* worker);
+    void AttachWorker(CSftpTransferWorker* worker, bool ownsWorker = false);
     virtual void DetachWorker() override;
     void UpdateFromWorker();
     BOOL GetIsBackground() const { return IsBackground; }
@@ -678,6 +679,10 @@ public:
     CSftpProfile    Profile;         // per-instance connection profile
     CSftpTransferWorker TransferWorker; // background transfer worker
     CSftpTransferProgressDlg* ActiveTransferDlg; // currently active transfer dialog (if any)
+    std::vector<CSftpTransferProgressDlg*> ActiveTransferDlgs; // list of all active transfer dialogs
+
+    void RegisterTransferDlg(CSftpTransferProgressDlg* dlg);
+    void UnregisterTransferDlg(CSftpTransferProgressDlg* dlg);
 
     CSftpConnection& GetConn() { return Conn; }
     CSftpProfile& GetProfile() { return Profile; }

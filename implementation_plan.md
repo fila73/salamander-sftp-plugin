@@ -109,3 +109,29 @@ Tento plán řeší dva problémy zachycené na uživatelském screenshotu:
 - [x] Nasazení binárek do `C:\Apps\samandarin\plugins\sftp\` i `lang\`.
 - [x] Aktualizace dokumentace (`jobs_done.md`, `nice_to_have.md`, `PLUGIN_DEV.md`, `README_CZ.md`, `README.md`, `implementation_plan.md`).
 
+---
+
+# Nezávislé instance workerů pro souběžné přenosy na pozadí & oprava kolize dialogů a pádu při ukončení
+
+## Problém
+Při spuštění dvou souběžných operací kopírování v témže panelu/profilu:
+1. Po dokončení prvního vlákna začal první dialog zobrazovat objem a průběh druhého přenosu a nikdy se nezavřel.
+2. Druhý dialog běžel souběžně; stisk Storno zavřel jen jedno okno, staré zůstalo viset.
+3. Při ukončení Salamandera došlo k pádu procesu na access violation (`50B4C3A8C1E0EAB4-AS50SAM0.15.1X64-260920-015421.TXT`).
+
+## Příčina
+`CPluginFSInterface` vlastnil jedinou instanci `CSftpTransferWorker TransferWorker` a ukazatel `CSftpTransferProgressDlg* ActiveTransferDlg`. Spuštění druhého přenosu zavolalo `TransferWorker.Reset()`, čímž se vymazaly úlohy prvního přenosu a notifikace se přesměrovaly na `dlg2`. `dlg1` byl osiřelý a pollingoval worker běžícího druhého přenosu. Při zavření aplikace došlo k UAF.
+
+## Realizované změny
+1. **Per-transfer worker**: V `CopyOrMoveFromFS` a `CopyOrMoveFromDiskToFS` se alokuje `new CSftpTransferWorker()`.
+2. **Vlastnictví workeru dialogem (`OwnsWorker`)**: Dialog v `DetachWorker()`, `WM_DESTROY` a `WM_APP_SFTP_WORKER_FINISHED` bezpečně zastavuje a uvolňuje worker thread.
+3. **Evidence více dialogů v FS (`ActiveTransferDlgs`)**: Metody `RegisterTransferDlg` a `UnregisterTransferDlg` udržují seznam běžících oken.
+4. **Čisté ukončení**: V `~CPluginFSInterface` se bezpečně odpojují a ruší všechna zbývající okna a workery.
+5. **Menu Show Transfers**: Obnovuje všechna aktivní okna ze seznamu.
+
+## Stav
+- [x] Implementace `src/sftp.h`, `src/fs2.cpp`, `src/menu.cpp`.
+- [x] Úspěšné zkompilování a testy (100% pass).
+- [x] Nasazení binárky do `C:\Apps\samandarin\plugins\sftp\sftp.spl`.
+- [x] Dokumentace aktualizována.
+
