@@ -178,10 +178,23 @@ static unsigned char *ossl_write_bn(unsigned char *buf,
 }
 #endif
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <bcrypt.h>
+#ifndef BCRYPT_USE_SYSTEM_PREFERRED_RNG
+#define BCRYPT_USE_SYSTEM_PREFERRED_RNG 0x00000002
+#endif
+#endif
+
 int ssh2_random(unsigned char *buf, size_t len)
 {
     if(len > INT_MAX)
         return -1;
+
+#if defined(_WIN32)
+    if(BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0)
+        return 0;
+#endif
 
     return RAND_bytes(buf, (int)len) == 1 ? 0 : -1;
 }

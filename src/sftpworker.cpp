@@ -2,8 +2,12 @@
 //
 // Background worker thread for asynchronous SFTP transfers.
 #include "sftpworker.h"
+#include <process.h>
 #include <shlwapi.h>
 #include <stdio.h>
+#ifndef NO_OPENSSL
+#include <openssl/crypto.h>
+#endif
 
 CSftpTransferWorker::CSftpTransferWorker()
     : ThreadHandle(NULL), ThreadId(0), WakeEvent(NULL), StopEvent(NULL),
@@ -105,7 +109,7 @@ bool CSftpTransferWorker::Start(const CSftpProfile& profile, HWND dlgHwnd)
     State.LastUpdateTick = State.StartTick;
     LeaveCriticalSection(&State.Lock);
 
-    ThreadHandle = CreateThread(NULL, 0, ThreadEntryPoint, this, 0, &ThreadId);
+    ThreadHandle = (HANDLE)_beginthreadex(NULL, 0, ThreadEntryPoint, this, 0, (unsigned*)&ThreadId);
     if (!ThreadHandle)
     {
         EnterCriticalSection(&State.Lock);
@@ -228,10 +232,11 @@ void CSftpTransferWorker::GetStateSnapshot(CSftpTransferState& outState)
     LeaveCriticalSection(&State.Lock);
 }
 
-DWORD WINAPI CSftpTransferWorker::ThreadEntryPoint(LPVOID param)
+unsigned __stdcall CSftpTransferWorker::ThreadEntryPoint(LPVOID param)
 {
     CSftpTransferWorker* worker = static_cast<CSftpTransferWorker*>(param);
     worker->ThreadLoop();
+    _endthreadex(0);
     return 0;
 }
 
@@ -336,6 +341,10 @@ void CSftpTransferWorker::ThreadLoop()
 
     if (DlgHwnd)
         PostMessage(DlgHwnd, WM_APP_SFTP_WORKER_FINISHED, 0, 0);
+
+#ifndef NO_OPENSSL
+    OPENSSL_thread_stop();
+#endif
 }
 
 bool CSftpTransferWorker::ExecuteTask(const CSftpTransferTask& task)

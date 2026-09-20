@@ -121,7 +121,7 @@ public:
     const CSftpProfile& GetProfile() const { return Profile; }
 
 private:
-    static DWORD WINAPI ThreadEntryPoint(LPVOID param);
+    static unsigned __stdcall ThreadEntryPoint(void* param);
     void ThreadLoop();
 
     bool ExecuteTask(const CSftpTransferTask& task);

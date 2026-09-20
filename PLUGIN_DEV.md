@@ -326,3 +326,32 @@ Při souběžném spuštění více přenosů (stahování i nahrávání) v rá
    - Původní `parent` se uloží do `CenterToWnd` a použije se pro jednorázové vycentrování v `WM_INITDIALOG` přes `SalamanderGeneral->MultiMonCenterWindow(HWindow, CenterToWnd, TRUE)`.
    - Přidáním rozšířeného stylu `WS_EX_APPWINDOW` a stylu `WS_MINIMIZEBOX` získává přenosový dialog vlastní tlačítko na hlavním panelu Windows a tlačítko minimalizace v záhlaví.
    - Při kliknutí do hlavního okna Salamandera se Salamander bez problémů přenese do popředí a dialogy jej netrvale nepřekrývají.
+
+---
+
+## 14. Vláknová bezpečnost přenosů na pozadí, OpenSSL DRBG a Windows CSPRNG (`BCryptGenRandom`)
+
+Při provozu asynchronních přenosů ve vedlejších vláknech je nutné dodržet zásadní pravidla pro souběh s kryptografickými knihovnami a C Runtime:
+1. **Inicializace vlákna přes C Runtime (`_beginthreadex` namísto `CreateThread`)**:
+   - Vlákno workeru nesmí být vytvářeno surovým Win32 `CreateThread`, které nealokuje a neinicializuje per-thread datové struktury C Runtime (`_tiddata` v UCRT/MSVCRT).
+   - Vždy použijte `_beginthreadex` z `<process.h>` se vstupním bodem `unsigned __stdcall ThreadEntryPoint(void* param)` a na výstupu volejte `_endthreadex(0)`.
+2. **Nativní Windows CSPRNG pro SSH náhodná čísla (`BCryptGenRandom`)**:
+   - OpenSSL 3 využívá složitou hierarchii deterministických generátorů náhodných čísel (DRBG) s per-thread TLS kontexty a synchronizačními zámky (`rand_global->lock` / `CRYPTO_THREAD_read_lock` -> `RtlAcquireSRWLockShared`).
+   - Při volání `RAND_bytes` z nově vytvořeného vedlejšího vlákna docházelo v OpenSSL 3 k přístupové výjimce (Access Violation na uvolněné adrese zámku v `libcrypto-3-x64.dll`).
+   - Funkce `ssh2_random` v `src/libssh2/openssl.c` je proto na Windows přímo napojena na jádrové systémové rozhraní Windows CNG:
+     ```c
+     #if defined(_WIN32)
+     if (BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0)
+         return 0;
+     #endif
+     ```
+   - Toto volání je 100% thread-safe, rychlé, FIPS certifikované, spravované jádrem Windows a zcela nezávislé na stavu a zámcích OpenSSL DRBG.
+3. **Explicitní inicializace a úklid vlákna OpenSSL**:
+   - V `CSftpConnection::GlobalInit` se na hlavním vlákně volá:
+     ```cpp
+     OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS |
+                         OPENSSL_INIT_ADD_ALL_CIPHERS |
+                         OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
+     ```
+   - Před ukončením každého worker vlákna se volá `OPENSSL_thread_stop()`, které uvolní případné alokace v TLS kontextu daného vlákna.
+

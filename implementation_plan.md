@@ -158,3 +158,29 @@ Předání `parent` (HWND hlavního okna Salamandera) do `CCommonDialog` vytvoř
 - [x] Nasazení do `C:\Apps\samandarin\plugins\sftp\` a `lang\`.
 - [x] Dokumentace aktualizována.
 
+---
+
+# Oprava pádu ihned po zahájení kopírování (Access violation v `AcquireSRWLockShared` & OpenSSL DRBG / Threading)
+
+## Problém
+Ihned po zahájení kopírování souborů z/do SFTP panelu došlo k pádu aplikace Open Salamander (`50B4C3A8C1E0EAB4-AS50SAM0.15.1X64-260920-105106.TXT`).
+
+## Příčina
+1. K výjimce `EXCEPTION_ACCESS_VIOLATION` (zápis na neplatnou adresu zámku `0x000001F03E690A90`) došlo v novém worker vlákně `CSftpTransferWorker` při volání `libssh2_session_handshake` -> `kex.c` -> `ssh2_random` -> `RAND_bytes` -> `AcquireSRWLockShared` uvnitř `libcrypto-3-x64.dll`.
+2. OpenSSL 3 využívá komplexní hierarchii generátorů náhodných čísel (DRBG) s per-thread TLS kontexty a zámky (`rand_global->lock`). Při přenosu z nového vlákna se DRBG pokusil o zamčení na neplatné/dealokované adrese zámku.
+3. Vlákno bylo vytvářeno přes Win32 `CreateThread` namísto C Runtime `_beginthreadex`, což vedlo k neúplné inicializaci struktur CRT/TLS pro worker vlákno.
+
+## Realizované změny
+1. **Windows CNG CSPRNG (`BCryptGenRandom`)**: V `src/libssh2/openssl.c` byla funkce `ssh2_random` na Windows přepojena na nativní systémové jádrové rozhraní Windows CNG `BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG)`. Volání je 100% thread-safe, FIPS certifikované a zcela nezávislé na stavu a zámcích OpenSSL DRBG.
+2. **Korektní CRT inicializace vláken (`_beginthreadex`)**: Spouštění worker threadu v `CSftpTransferWorker::Start` bylo přepnuto na `_beginthreadex` z `<process.h>` se signaturou `unsigned __stdcall ThreadEntryPoint` a voláním `_endthreadex(0)`.
+3. **Úklid OpenSSL stavu vlákna (`OPENSSL_thread_stop`)**: Na konci worker vlákna i v `GlobalExit` je voláno `OPENSSL_thread_stop()`.
+4. **Explicitní inicializace OpenSSL (`OPENSSL_init_crypto`)**: V `CSftpConnection::GlobalInit` doplněno explicitní volání `OPENSSL_init_crypto`.
+
+## Stav
+- [x] Implementace v `src/libssh2/openssl.c`, `src/sftpworker.cpp`, `src/sftpworker.h`, `src/sftpconn.cpp`.
+- [x] Úspěšná čistá kompilace `sftp.spl`, `english.slg`, `czech.slg`.
+- [x] Spuštění testů: `test_worker.exe`, `test_path_hottrack.exe`, `test_multithread_handshake.exe` (100% pass).
+- [x] Nasazení binárek do `C:\Apps\samandarin\plugins\sftp\`.
+- [x] Dokumentace aktualizována.
+
+

@@ -77,6 +77,11 @@ bool CSftpConnection::GlobalInit()
         SftpTraceLog("CSftpConnection::GlobalInit: WSAStartup failed");
         return false;
     }
+#ifndef NO_OPENSSL
+    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS |
+                        OPENSSL_INIT_ADD_ALL_CIPHERS |
+                        OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
+#endif
     SftpTraceLog("CSftpConnection::GlobalInit: after WSAStartup, before libssh2_init");
     int rc = libssh2_init(0);
     SftpTraceLog("CSftpConnection::GlobalInit: after libssh2_init rc=%d", rc);
@@ -87,6 +92,9 @@ void CSftpConnection::GlobalExit()
 {
     SftpTraceLog("CSftpConnection::GlobalExit: calling libssh2_exit and WSACleanup");
     libssh2_exit();
+#ifndef NO_OPENSSL
+    OPENSSL_thread_stop();
+#endif
     WSACleanup();
 }
 
