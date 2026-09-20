@@ -52,6 +52,7 @@ extern int SftpLeavePanelAction;
 
 // transfer dialog auto close on finish (default TRUE)
 extern BOOL SftpCloseTransferDlgOnFinish;
+void SaveSftpConfigurationImmediately(HWND parent);
 
 // active transfer dialog HWND list for modeless keyboard navigation (IsDialogMessage)
 extern std::vector<HWND> g_TransferDlgHwnds;
@@ -551,6 +552,17 @@ protected:
     char NotifySourcePath[MAX_PATH * 2];
     BOOL NotifyIsMove;
 
+    BOOL SimpleLook;
+    int SimpleDlgHeight;
+    int DetailedDlgHeight;
+    HWND ConsListView;
+    HWND ItemsListView;
+    BOOL ShowOnlyErrors;
+    BOOL OperationFinished;
+
+    std::vector<CSftpTransferTask> CachedTasks;
+    std::vector<size_t> DisplayedTaskIndices;
+
 public:
     CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
     virtual ~CSftpTransferProgressDlg();
@@ -568,6 +580,12 @@ public:
     virtual void DetachWorker() override;
     void UpdateFromWorker();
     BOOL GetIsBackground() const { return IsBackground; }
+
+    void ToggleSimpleLook();
+    void ShowControlsAndChangeSize(BOOL simple);
+    void InitListViews();
+    void RefreshListViews();
+    void ShowNextError();
 
 protected:
     virtual INT_PTR DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam);

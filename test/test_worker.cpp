@@ -1,20 +1,22 @@
-#include <winsock2.h>
-#include <windows.h>
+#include "precomp.h"
 #include <stdio.h>
 #include <assert.h>
 #include "sftpworker.h"
+#include "sftpconflictdlg.h"
 
-// Stubs for Salamander SDK symbols referenced by sftpglue.o
-void* SalamanderGeneral = nullptr;
-const char* LoadStr(int) { return ""; }
-extern "C" char* _sal_lstrcpynA(char* d, const char* s, int n)
-{
-    if (!d || n <= 0) return d;
-    if (!s) { *d = 0; return d; }
-    lstrcpynA(d, s, n);
-    return d;
-}
+CSalamanderGeneralAbstract* SalamanderGeneral = nullptr;
+CSalamanderGUIAbstract* SalamanderGUI = nullptr;
+HINSTANCE HLanguage = NULL;
+char* LoadStr(int) { static char empty[] = ""; return empty; }
 bool SftpInputDialog(HWND, const char*, bool, char*, int) { return false; }
+void SftpApplyDarkModeToWindow(HWND) {}
+BOOL PluginDarkMode_HandleThemeMessage(HWND, UINT, LPARAM) { return FALSE; }
+BOOL PluginDarkMode_HandleCtlColor(UINT, WPARAM, LPARAM, LRESULT*) { return FALSE; }
+
+CCommonDialog::CCommonDialog(HINSTANCE hInstance, int resID, HWND hParent, CObjectOrigin origin)
+    : CDialog(hInstance, resID, hParent, origin) {}
+INT_PTR CCommonDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam) { return CDialog::DialogProc(uMsg, wParam, lParam); }
+void CCommonDialog::NotifDlgJustCreated() {}
 
 
 int main()
@@ -91,7 +93,21 @@ int main()
     worker.GetStateSnapshot(snap);
     assert(snap.TotalItemsCount == 1);
     assert(snap.TotalBytesExpected == 1024);
-    printf("  Worker second transfer queue verified (1 item, 1024 bytes).\n");
+    // Test Pause / Resume and task snapshot
+    assert(!worker.IsPaused());
+    worker.SetPaused(true);
+    assert(worker.IsPaused());
+    worker.GetStateSnapshot(snap);
+    assert(snap.IsPaused);
+    worker.SetPaused(false);
+    assert(!worker.IsPaused());
+    printf("  Worker Pause/Resume control verified successfully.\n");
+
+    std::vector<CSftpTransferTask> tasksSnap;
+    worker.GetTasksSnapshot(tasksSnap);
+    assert(tasksSnap.size() == 1);
+    assert(tasksSnap[0].Status == CSftpTransferTask::StatusWaiting);
+    printf("  Worker task snapshot verified successfully (size %zu).\n", tasksSnap.size());
 
     worker.Reset();
     printf("ALL SFTP TRANSFER WORKER UNIT TESTS PASSED SUCCESSFULLY!\n");

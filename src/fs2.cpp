@@ -417,6 +417,14 @@ CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin or
     NotifyTargetPath[0] = 0;
     NotifySourcePath[0] = 0;
     NotifyIsMove = FALSE;
+
+    SimpleLook = TRUE;
+    SimpleDlgHeight = 0;
+    DetailedDlgHeight = 0;
+    ConsListView = NULL;
+    ItemsListView = NULL;
+    ShowOnlyErrors = FALSE;
+    OperationFinished = FALSE;
 }
 
 CSftpTransferProgressDlg::~CSftpTransferProgressDlg()
@@ -694,6 +702,172 @@ void CSftpTransferProgressDlg::AttachWorker(CSftpTransferWorker* worker, bool ow
     }
 }
 
+static int SftpGetSysIconIndex(const char* fullPath, bool isDir)
+{
+    SHFILEINFOA sfi;
+    memset(&sfi, 0, sizeof(sfi));
+    DWORD attrs = isDir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+    if (SHGetFileInfoA(fullPath, attrs, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES | SHGFI_SMALLICON))
+    {
+        return sfi.iIcon;
+    }
+    return 0;
+}
+
+void CSftpTransferProgressDlg::InitListViews()
+{
+    ConsListView = GetDlgItem(HWindow, IDL_CONNECTIONS);
+    ItemsListView = GetDlgItem(HWindow, IDL_OPERATIONS);
+    if (ConsListView == NULL || ItemsListView == NULL)
+        return;
+
+    ListView_SetExtendedListViewStyle(ConsListView,
+        ListView_GetExtendedListViewStyle(ConsListView) | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+    ListView_SetExtendedListViewStyle(ItemsListView,
+        ListView_GetExtendedListViewStyle(ItemsListView) | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+
+    LV_COLUMN lvc;
+    memset(&lvc, 0, sizeof(lvc));
+    lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
+    lvc.fmt = LVCFMT_LEFT;
+
+    // ConsListView columns: ID (50px), Akce (200px), Stav (200px)
+    lvc.iSubItem = 0; lvc.cx = 50; lvc.pszText = (LPSTR)"ID";
+    ListView_InsertColumn(ConsListView, 0, &lvc);
+    lvc.iSubItem = 1; lvc.cx = 200; lvc.pszText = (LPSTR)"Akce";
+    ListView_InsertColumn(ConsListView, 1, &lvc);
+    lvc.iSubItem = 2; lvc.cx = 250; lvc.pszText = (LPSTR)"Stav";
+    ListView_InsertColumn(ConsListView, 2, &lvc);
+
+    // ItemsListView columns: Popis (320px), Stav (250px)
+    lvc.iSubItem = 0; lvc.cx = 320; lvc.pszText = (LPSTR)"Popis";
+    ListView_InsertColumn(ItemsListView, 0, &lvc);
+    lvc.iSubItem = 1; lvc.cx = 250; lvc.pszText = (LPSTR)"Stav";
+    ListView_InsertColumn(ItemsListView, 1, &lvc);
+
+    // System ImageList for small file icons
+    SHFILEINFOA sfi;
+    memset(&sfi, 0, sizeof(sfi));
+    HIMAGELIST hSysIL = (HIMAGELIST)SHGetFileInfoA("C:\\", 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON);
+    if (hSysIL != NULL)
+    {
+        ListView_SetImageList(ItemsListView, hSysIL, LVSIL_SMALL);
+    }
+}
+
+void CSftpTransferProgressDlg::RefreshListViews()
+{
+    if (Worker != NULL)
+    {
+        Worker->GetTasksSnapshot(CachedTasks);
+    }
+
+    DisplayedTaskIndices.clear();
+    for (size_t i = 0; i < CachedTasks.size(); i++)
+    {
+        if (ShowOnlyErrors)
+        {
+            if (CachedTasks[i].Status == CSftpTransferTask::StatusError)
+                DisplayedTaskIndices.push_back(i);
+        }
+        else
+        {
+            DisplayedTaskIndices.push_back(i);
+        }
+    }
+
+    if (ConsListView != NULL)
+    {
+        ListView_SetItemCountEx(ConsListView, 1, LVSICF_NOSCROLL);
+        InvalidateRect(ConsListView, NULL, FALSE);
+    }
+    if (ItemsListView != NULL)
+    {
+        ListView_SetItemCountEx(ItemsListView, (int)DisplayedTaskIndices.size(), LVSICF_NOSCROLL);
+        InvalidateRect(ItemsListView, NULL, FALSE);
+    }
+
+    // Enable / disable errors button
+    bool hasAnyErrors = false;
+    for (size_t i = 0; i < CachedTasks.size(); i++)
+    {
+        if (CachedTasks[i].Status == CSftpTransferTask::StatusError)
+        {
+            hasAnyErrors = true;
+            break;
+        }
+    }
+    EnableWindow(GetDlgItem(HWindow, IDB_SHOWERRORS), hasAnyErrors ? TRUE : FALSE);
+}
+
+static const int s_detailedCtrlIds[] = {
+    IDC_DLGSPLITBAR,
+    IDT_CONNECTIONS,
+    IDL_CONNECTIONS,
+    IDB_OPCONSSOLVEERROR,
+    IDB_OPCONSPAUSERESUME,
+    IDT_OPERATIONSTEXT,
+    IDL_OPERATIONS,
+    IDB_OPOPERSSHOWONLYERR,
+    IDB_OPOPERSSOLVEERROR,
+    IDB_OPOPERSRETRY,
+    IDB_OPOPERSSKIP,
+    -1
+};
+
+void CSftpTransferProgressDlg::ShowControlsAndChangeSize(BOOL simple)
+{
+    int show = simple ? SW_HIDE : SW_SHOW;
+    for (int i = 0; s_detailedCtrlIds[i] != -1; i++)
+    {
+        HWND hCtrl = GetDlgItem(HWindow, s_detailedCtrlIds[i]);
+        if (hCtrl != NULL)
+        {
+            ShowWindow(hCtrl, show);
+            EnableWindow(hCtrl, !simple);
+        }
+    }
+
+    RECT rDlg;
+    GetWindowRect(HWindow, &rDlg);
+    int targetHeight = simple ? SimpleDlgHeight : DetailedDlgHeight;
+    if (targetHeight > 0)
+    {
+        SetWindowPos(HWindow, NULL, 0, 0, rDlg.right - rDlg.left, targetHeight,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    SetDlgItemText(HWindow, IDB_SHOWDETAILS, simple ? "Detaily >>" : "<< Detaily");
+    if (ItemsListView != NULL && !simple)
+    {
+        RefreshListViews();
+    }
+}
+
+void CSftpTransferProgressDlg::ToggleSimpleLook()
+{
+    SimpleLook = !SimpleLook;
+    ShowControlsAndChangeSize(SimpleLook);
+}
+
+void CSftpTransferProgressDlg::ShowNextError()
+{
+    if (SimpleLook)
+    {
+        ToggleSimpleLook();
+    }
+    CheckDlgButton(HWindow, IDB_OPOPERSSHOWONLYERR, BST_CHECKED);
+    ShowOnlyErrors = TRUE;
+    RefreshListViews();
+
+    if (ItemsListView != NULL && ListView_GetItemCount(ItemsListView) > 0)
+    {
+        ListView_SetItemState(ItemsListView, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(ItemsListView, 0, FALSE);
+        SetFocus(ItemsListView);
+    }
+}
+
 void CSftpTransferProgressDlg::UpdateFromWorker()
 {
     if (Worker == NULL)
@@ -707,50 +881,8 @@ void CSftpTransferProgressDlg::UpdateFromWorker()
     if (snap.TotalItemsCount > 0)
         TotalFilesCount = snap.TotalItemsCount;
 
-    const char* curFile = IsUpload ? snap.CurrentLocalFile : snap.CurrentRemoteFile;
-    const char* base = strrchr(curFile, '\\');
-    const char* b2 = strrchr(curFile, '/');
-    if (b2 > base)
-        base = b2;
-    base = (base != NULL) ? base + 1 : curFile;
-    if (base[0] != 0)
-        lstrcpynA(FileNameCache, base, sizeof(FileNameCache));
-
     FileDoneBytes = snap.CurrentFileDone;
     FileTotalBytes = snap.CurrentFileTotal;
-
-    double speedMB = snap.BytesPerSec / 1048576.0;
-    char etaStr[64] = "";
-    if (speedMB > 0.01 && FileTotalBytes > FileDoneBytes)
-    {
-        unsigned __int64 remBytes = FileTotalBytes - FileDoneBytes;
-        int remSec = (int)((double)remBytes / snap.BytesPerSec);
-        if (remSec >= 3600)
-            _snprintf_s(etaStr, _TRUNCATE, " - ETA: %d:%02d:%02d", remSec / 3600, (remSec % 3600) / 60, remSec % 60);
-        else
-            _snprintf_s(etaStr, _TRUNCATE, " - ETA: %02d:%02d", remSec / 60, remSec % 60);
-    }
-
-    if (FileTotalBytes > 0)
-    {
-        if (FileTotalBytes >= 1048576)
-        {
-            _snprintf_s(StatusCache, _TRUNCATE, "%.1f / %.1f MB  (%.2f MB/s)%s",
-                        (double)FileDoneBytes / 1048576.0, (double)FileTotalBytes / 1048576.0, speedMB, etaStr);
-        }
-        else
-        {
-            _snprintf_s(StatusCache, _TRUNCATE, "%I64u / %I64u kB  (%.2f MB/s)%s",
-                        FileDoneBytes / 1024, FileTotalBytes / 1024, speedMB, etaStr);
-        }
-        FileProgressCache = (DWORD)(FileDoneBytes * 1000 / FileTotalBytes);
-    }
-    else
-    {
-        _snprintf_s(StatusCache, _TRUNCATE, "%I64u kB  (%.2f MB/s)", FileDoneBytes / 1024, speedMB);
-        FileProgressCache = 0;
-    }
-
     TotalDoneBytes = snap.TotalBytesDone;
     if (snap.TotalBytesExpected > 0)
         TotalExpectedBytes = snap.TotalBytesExpected;
@@ -760,52 +892,107 @@ void CSftpTransferProgressDlg::UpdateFromWorker()
         TotalProgressCache = (DWORD)(TotalDoneBytes * 1000 / TotalExpectedBytes);
         if (TotalProgressCache > 1000)
             TotalProgressCache = 1000;
-
-        if (TotalFilesCount > 1)
-        {
-            const char* fmt = (TotalExpectedBytes >= 1048576) ? LoadStr(IDS_TR_TOTAL_ITEMS_MB) : LoadStr(IDS_TR_TOTAL_ITEMS_KB);
-            if (fmt != NULL && strstr(fmt, "%d") != NULL)
-            {
-                if (TotalExpectedBytes >= 1048576)
-                {
-                    _snprintf_s(TotalStatusCache, _TRUNCATE, fmt,
-                                CurrentFileIndex, TotalFilesCount,
-                                (double)TotalDoneBytes / 1048576.0, (double)TotalExpectedBytes / 1048576.0);
-                }
-                else
-                {
-                    _snprintf_s(TotalStatusCache, _TRUNCATE, fmt,
-                                CurrentFileIndex, TotalFilesCount,
-                                TotalDoneBytes / 1024, TotalExpectedBytes / 1024);
-                }
-            }
-            else
-            {
-                _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d (%.1f / %.1f MB)",
-                            CurrentFileIndex, TotalFilesCount,
-                            (double)TotalDoneBytes / 1048576.0, (double)TotalExpectedBytes / 1048576.0);
-            }
-        }
-        else
-        {
-            TotalStatusCache[0] = 0;
-        }
     }
-    else if (TotalFilesCount > 1)
+    else if (FileTotalBytes > 0)
     {
-        _snprintf_s(TotalStatusCache, _TRUNCATE, "Total: item %d of %d", CurrentFileIndex, TotalFilesCount);
-        TotalProgressCache = (DWORD)(((CurrentFileIndex - 1) * 1000 + FileProgressCache) / TotalFilesCount);
+        TotalProgressCache = (DWORD)(FileDoneBytes * 1000 / FileTotalBytes);
+        if (TotalProgressCache > 1000)
+            TotalProgressCache = 1000;
     }
     else
     {
-        TotalStatusCache[0] = 0;
-        TotalProgressCache = FileProgressCache;
+        TotalProgressCache = 0;
     }
 
+    // 1. Elapsed time
+    DWORD now = GetTickCount();
+    if (StartTick == 0)
+        StartTick = now;
+    DWORD elapsedSec = (now - StartTick) / 1000;
+    char elBuf[64];
+    if (elapsedSec < 60)
+        _snprintf_s(elBuf, sizeof(elBuf), _TRUNCATE, "%u s", (unsigned)elapsedSec);
+    else if (elapsedSec < 3600)
+        _snprintf_s(elBuf, sizeof(elBuf), _TRUNCATE, "%u min %02u s", (unsigned)elapsedSec / 60, (unsigned)elapsedSec % 60);
+    else
+        _snprintf_s(elBuf, sizeof(elBuf), _TRUNCATE, "%u h %02u min", (unsigned)elapsedSec / 3600, ((unsigned)elapsedSec % 3600) / 60);
+    SetDlgItemText(HWindow, IDT_TR_ELAPSED_TIME, elBuf);
 
-    TextCacheIsDirty = TRUE;
-    ProgressCacheIsDirty = TRUE;
-    FlushDataToControls();
+    // 2. Remaining time
+    char remBuf[64];
+    if (snap.IsPaused)
+    {
+        strcpy_s(remBuf, "(pozastaveno)");
+    }
+    else if (OperationFinished)
+    {
+        strcpy_s(remBuf, snap.HasError ? "(chyba)" : "(hotovo)");
+    }
+    else if (snap.BytesPerSec > 100.0 && TotalExpectedBytes > TotalDoneBytes)
+    {
+        int remSec = (int)((double)(TotalExpectedBytes - TotalDoneBytes) / snap.BytesPerSec);
+        if (remSec < 60)
+            _snprintf_s(remBuf, sizeof(remBuf), _TRUNCATE, "%d s", remSec);
+        else if (remSec < 3600)
+            _snprintf_s(remBuf, sizeof(remBuf), _TRUNCATE, "%d min %02d s", remSec / 60, remSec % 60);
+        else
+            _snprintf_s(remBuf, sizeof(remBuf), _TRUNCATE, "%d h %02d min", remSec / 3600, (remSec % 3600) / 60);
+    }
+    else if (TotalExpectedBytes == 0 || snap.IsRunning)
+    {
+        strcpy_s(remBuf, "(výpočet...)");
+    }
+    else
+    {
+        strcpy_s(remBuf, "(neznámý)");
+    }
+    SetDlgItemText(HWindow, IDT_TR_TIME_LEFT, remBuf);
+
+    // 3. Status text
+    size_t errCount = 0;
+    for (size_t i = 0; i < CachedTasks.size(); i++)
+    {
+        if (CachedTasks[i].Status == CSftpTransferTask::StatusError)
+            errCount++;
+    }
+    if (snap.HasError)
+        errCount++;
+
+    char doneStr[32], totalStr[32];
+    if (TotalExpectedBytes >= 1048576)
+    {
+        _snprintf_s(doneStr, sizeof(doneStr), _TRUNCATE, "%.1f MB", (double)TotalDoneBytes / 1048576.0);
+        _snprintf_s(totalStr, sizeof(totalStr), _TRUNCATE, "%.1f MB", (double)TotalExpectedBytes / 1048576.0);
+    }
+    else
+    {
+        _snprintf_s(doneStr, sizeof(doneStr), _TRUNCATE, "%I64u kB", TotalDoneBytes / 1024);
+        _snprintf_s(totalStr, sizeof(totalStr), _TRUNCATE, "%I64u kB", TotalExpectedBytes / 1024);
+    }
+
+    _snprintf_s(StatusCache, sizeof(StatusCache), _TRUNCATE, "%s z %s (%.2f MB/s), %u chyb",
+                doneStr, totalStr, snap.BytesPerSec / 1048576.0, (unsigned)errCount);
+    SetDlgItemText(HWindow, IDT_TR_STATUS, StatusCache);
+
+    // 4. Progress bar
+    if (FileProgressBar != NULL)
+        FileProgressBar->SetProgress(TotalProgressCache, NULL);
+
+    // 5. Title bar percentage update
+    int pct = (int)(TotalProgressCache / 10);
+    char curTitle[128];
+    if (GetWindowText(HWindow, curTitle, sizeof(curTitle)) > 0)
+    {
+        const char* pParen = strchr(curTitle, ')');
+        const char* baseTitle = (pParen != NULL) ? pParen + 2 : curTitle;
+        char newTitle[256];
+        _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "(%d %%) %s", pct, baseTitle);
+        if (strcmp(curTitle, newTitle) != 0)
+            SetWindowText(HWindow, newTitle);
+    }
+
+    // 6. Refresh list views
+    RefreshListViews();
 }
 
 void CSftpTransferProgressDlg::EnableCancel(BOOL enable)
@@ -863,18 +1050,14 @@ void CSftpTransferProgressDlg::FlushDataToControls()
         {
             SetDlgItemText(HWindow, IDT_TR_FROM_PATH, FromPathCache);
             SetDlgItemText(HWindow, IDT_TR_TO_PATH, ToPathCache);
-            SetDlgItemText(HWindow, IDT_TR_FILE_NAME, FileNameCache);
             SetDlgItemText(HWindow, IDT_TR_STATUS, StatusCache);
-            SetDlgItemText(HWindow, IDT_TR_TOTAL_STATUS, TotalStatusCache);
             TextCacheIsDirty = FALSE;
         }
 
         if (ProgressCacheIsDirty)
         {
             if (FileProgressBar != NULL)
-                FileProgressBar->SetProgress(FileProgressCache, NULL);
-            if (TotalProgressBar != NULL)
-                TotalProgressBar->SetProgress(TotalProgressCache, NULL);
+                FileProgressBar->SetProgress(TotalProgressCache, NULL);
             ProgressCacheIsDirty = FALSE;
         }
     }
@@ -890,6 +1073,8 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         WinLibApplyDarkMode(HWindow);
 #endif
         SftpApplyDarkModeToWindow(HWindow);
+        SftpRegisterTransferDlgHwnd(HWindow);
+
         const char* fromCName = FromConnName[0] != 0 ? FromConnName : ConnName;
         const char* toCName = ToConnName[0] != 0 ? ToConnName : fromCName;
         if (fromCName[0] != 0 || toCName[0] != 0)
@@ -910,13 +1095,36 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
                 SetWindowText(HWindow, newTitle);
             }
         }
+
         FileProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_FILE_PROGRESS);
-        TotalProgressBar = SalamanderGUI->AttachProgressBar(HWindow, IDP_TR_TOTAL_PROGRESS);
-        if (FileProgressBar == NULL || TotalProgressBar == NULL)
+        TotalProgressBar = NULL;
+        if (FileProgressBar == NULL)
         {
             DestroyWindow(HWindow);
             return FALSE;
         }
+
+        RECT rDlg, rSplit;
+        GetWindowRect(HWindow, &rDlg);
+        HWND hSplit = GetDlgItem(HWindow, IDC_DLGSPLITBAR);
+        if (hSplit != NULL)
+        {
+            GetWindowRect(hSplit, &rSplit);
+            SimpleDlgHeight = rSplit.top - rDlg.top + 1;
+        }
+        else
+        {
+            SimpleDlgHeight = 220;
+        }
+        DetailedDlgHeight = rDlg.bottom - rDlg.top;
+
+        InitListViews();
+        CheckDlgButton(HWindow, IDC_TR_CLOSE_ON_FINISH, SftpCloseTransferDlgOnFinish ? BST_CHECKED : BST_UNCHECKED);
+        EnableWindow(GetDlgItem(HWindow, IDB_SHOWERRORS), FALSE);
+
+        SimpleLook = TRUE;
+        ShowControlsAndChangeSize(SimpleLook);
+
         SetTimer(HWindow, 101, 100, NULL);
         if (Worker != NULL)
         {
@@ -949,6 +1157,7 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
     case WM_DESTROY:
     {
         KillTimer(HWindow, 101);
+        SftpUnregisterTransferDlgHwnd(HWindow);
         if (Worker != NULL)
         {
             CSftpTransferWorker* w = Worker;
@@ -973,6 +1182,153 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         break;
     }
 
+    case WM_NOTIFY:
+    {
+        LPNMHDR pnm = (LPNMHDR)lParam;
+        if (pnm == NULL)
+            break;
+
+        if (pnm->idFrom == IDL_CONNECTIONS)
+        {
+            if (pnm->code == LVN_GETDISPINFOA)
+            {
+                NMLVDISPINFOA* pDisp = (NMLVDISPINFOA*)lParam;
+                if (pDisp->item.mask & LVIF_TEXT)
+                {
+                    CSftpTransferState snap;
+                    bool isPaused = false;
+                    bool isRunning = false;
+                    bool hasError = false;
+                    if (Worker != NULL)
+                    {
+                        Worker->GetStateSnapshot(snap);
+                        isPaused = snap.IsPaused;
+                        isRunning = snap.IsRunning;
+                        hasError = snap.HasError;
+                    }
+
+                    if (pDisp->item.iSubItem == 0)
+                    {
+                        lstrcpynA(pDisp->item.pszText, "1", pDisp->item.cchTextMax);
+                    }
+                    else if (pDisp->item.iSubItem == 1)
+                    {
+                        const char* act = OperationFinished ? "Dokončeno" : (IsUpload ? "Odesílání souborů" : "Stahování souborů");
+                        lstrcpynA(pDisp->item.pszText, act, pDisp->item.cchTextMax);
+                    }
+                    else if (pDisp->item.iSubItem == 2)
+                    {
+                        const char* st = OperationFinished ? "Dokončeno" : (isPaused ? "Pozastaveno" : (hasError ? "Chyba" : (isRunning ? "Zpracovávám" : "Čekání")));
+                        lstrcpynA(pDisp->item.pszText, st, pDisp->item.cchTextMax);
+                    }
+                }
+                return TRUE;
+            }
+            else if (pnm->code == LVN_GETDISPINFOW)
+            {
+                NMLVDISPINFOW* pDispW = (NMLVDISPINFOW*)lParam;
+                if (pDispW->item.mask & LVIF_TEXT)
+                {
+                    char bufA[256] = "";
+                    NMLVDISPINFOA dispA = {};
+                    dispA.hdr = pDispW->hdr;
+                    dispA.item.mask = LVIF_TEXT;
+                    dispA.item.iItem = pDispW->item.iItem;
+                    dispA.item.iSubItem = pDispW->item.iSubItem;
+                    dispA.item.pszText = bufA;
+                    dispA.item.cchTextMax = sizeof(bufA);
+                    SendMessage(HWindow, WM_NOTIFY, IDL_CONNECTIONS, (LPARAM)&dispA);
+                    MultiByteToWideChar(CP_ACP, 0, bufA, -1, pDispW->item.pszText, pDispW->item.cchTextMax);
+                }
+                return TRUE;
+            }
+        }
+        else if (pnm->idFrom == IDL_OPERATIONS)
+        {
+            if (pnm->code == LVN_GETDISPINFOA)
+            {
+                NMLVDISPINFOA* pDisp = (NMLVDISPINFOA*)lParam;
+                int itemIdx = pDisp->item.iItem;
+                if (itemIdx >= 0 && (size_t)itemIdx < DisplayedTaskIndices.size())
+                {
+                    size_t actualIdx = DisplayedTaskIndices[itemIdx];
+                    if (actualIdx < CachedTasks.size())
+                    {
+                        const CSftpTransferTask& t = CachedTasks[actualIdx];
+                        if (pDisp->item.mask & LVIF_IMAGE)
+                        {
+                            const char* p = !t.LocalPath.empty() ? t.LocalPath.c_str() : t.RemotePath.c_str();
+                            pDisp->item.iImage = SftpGetSysIconIndex(p, t.IsDirectory);
+                        }
+                        if (pDisp->item.mask & LVIF_TEXT)
+                        {
+                            if (pDisp->item.iSubItem == 0)
+                            {
+                                const char* name = t.RemotePath.c_str();
+                                const char* slash = strrchr(name, '/');
+                                if (slash != NULL)
+                                    name = slash + 1;
+                                else
+                                {
+                                    slash = strrchr(name, '\\');
+                                    if (slash != NULL)
+                                        name = slash + 1;
+                                }
+                                lstrcpynA(pDisp->item.pszText, name, pDisp->item.cchTextMax);
+                            }
+                            else if (pDisp->item.iSubItem == 1)
+                            {
+                                switch (t.Status)
+                                {
+                                case CSftpTransferTask::StatusWaiting:
+                                    lstrcpynA(pDisp->item.pszText, "Čeká", pDisp->item.cchTextMax);
+                                    break;
+                                case CSftpTransferTask::StatusRunning:
+                                    lstrcpynA(pDisp->item.pszText, "Probíhá", pDisp->item.cchTextMax);
+                                    break;
+                                case CSftpTransferTask::StatusDone:
+                                    lstrcpynA(pDisp->item.pszText, "Dokončeno", pDisp->item.cchTextMax);
+                                    break;
+                                case CSftpTransferTask::StatusError:
+                                    if (!t.ErrorMsg.empty())
+                                        _snprintf_s(pDisp->item.pszText, pDisp->item.cchTextMax, _TRUNCATE, "Chyba: %s", t.ErrorMsg.c_str());
+                                    else
+                                        lstrcpynA(pDisp->item.pszText, "Chyba", pDisp->item.cchTextMax);
+                                    break;
+                                case CSftpTransferTask::StatusSkipped:
+                                    lstrcpynA(pDisp->item.pszText, "Přeskočeno", pDisp->item.cchTextMax);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                return TRUE;
+            }
+            else if (pnm->code == LVN_GETDISPINFOW)
+            {
+                NMLVDISPINFOW* pDispW = (NMLVDISPINFOW*)lParam;
+                char bufA[512] = "";
+                NMLVDISPINFOA dispA = {};
+                dispA.hdr = pDispW->hdr;
+                dispA.item.mask = pDispW->item.mask;
+                dispA.item.iItem = pDispW->item.iItem;
+                dispA.item.iSubItem = pDispW->item.iSubItem;
+                dispA.item.pszText = bufA;
+                dispA.item.cchTextMax = sizeof(bufA);
+                SendMessage(HWindow, WM_NOTIFY, IDL_OPERATIONS, (LPARAM)&dispA);
+                if (pDispW->item.mask & LVIF_IMAGE)
+                    pDispW->item.iImage = dispA.item.iImage;
+                if ((pDispW->item.mask & LVIF_TEXT) && pDispW->item.pszText != NULL && pDispW->item.cchTextMax > 0)
+                {
+                    MultiByteToWideChar(CP_ACP, 0, bufA, -1, pDispW->item.pszText, pDispW->item.cchTextMax);
+                }
+                return TRUE;
+            }
+        }
+        break;
+    }
+
     case WM_APP_SFTP_WORKER_UPDATE:
     {
         UpdateFromWorker();
@@ -982,44 +1338,74 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
     case WM_APP_SFTP_WORKER_FINISHED:
     {
         KillTimer(HWindow, 101);
+        OperationFinished = TRUE;
+
+        CSftpTransferState snap;
         if (Worker != NULL)
         {
-            CSftpTransferState snap;
             Worker->GetStateSnapshot(snap);
-            if (snap.HasError && snap.ErrorMsg[0] != 0 && !snap.Cancelled)
-            {
-                if (IsBackground)
-                    ShowWindow(HWindow, SW_SHOW);
-                SalamanderGeneral->SalMessageBox(HWindow, snap.ErrorMsg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
-            }
-            CSftpTransferWorker* w = Worker;
-            bool owns = OwnsWorker;
-            Worker = NULL;
-            OwnsWorker = false;
-            w->SetDlgHwnd(NULL);
-            w->SetObserver(NULL);
-            if (owns)
-            {
-                w->Stop();
-                delete w;
-            }
-            else
-            {
-                w->Stop();
-            }
+            UpdateFromWorker();
         }
-        if (FS != NULL)
-        {
-            FS->UnregisterTransferDlg(this);
-        }
+
+        bool hasError = snap.HasError && !snap.Cancelled;
+        bool closeOnFinish = (IsDlgButtonChecked(HWindow, IDC_TR_CLOSE_ON_FINISH) == BST_CHECKED);
+
         if (NotifyTargetPath[0] != 0)
             SalamanderGeneral->PostChangeOnPathNotification(NotifyTargetPath, TRUE);
         if (NotifyIsMove && NotifySourcePath[0] != 0)
             SalamanderGeneral->PostChangeOnPathNotification(NotifySourcePath, TRUE);
 
-        if (CenterToWnd != NULL)
-            EnableWindow(CenterToWnd, TRUE);
-        DestroyWindow(HWindow);
+        if (!hasError && closeOnFinish && !snap.Cancelled)
+        {
+            if (CenterToWnd != NULL)
+                EnableWindow(CenterToWnd, TRUE);
+            DestroyWindow(HWindow);
+            return TRUE;
+        }
+
+        // Keep dialog open!
+        EnableWindow(GetDlgItem(HWindow, IDB_BACKGROUND), FALSE);
+        EnableWindow(GetDlgItem(HWindow, IDB_PAUSERESUME), FALSE);
+        EnableWindow(GetDlgItem(HWindow, IDB_OPCONSPAUSERESUME), FALSE);
+
+        HWND hCancel = GetDlgItem(HWindow, IDCANCEL);
+        if (hCancel != NULL)
+        {
+            SetWindowText(hCancel, "&Zavřít");
+            EnableWindow(hCancel, TRUE);
+            SendMessage(HWindow, DM_SETDEFID, IDCANCEL, 0);
+            SendMessage(hCancel, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE);
+            SetFocus(hCancel);
+        }
+
+        if (hasError)
+        {
+            SetDlgItemText(HWindow, IDT_TR_TIME_LEFT, "(chyba)");
+            char curTitle[256];
+            GetWindowText(HWindow, curTitle, sizeof(curTitle));
+            char newTitle[300];
+            _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "(chyba) %s", curTitle);
+            SetWindowText(HWindow, newTitle);
+            EnableWindow(GetDlgItem(HWindow, IDB_SHOWERRORS), TRUE);
+        }
+        else
+        {
+            SetDlgItemText(HWindow, IDT_TR_TIME_LEFT, "(hotovo)");
+            char curTitle[256];
+            GetWindowText(HWindow, curTitle, sizeof(curTitle));
+            char newTitle[300];
+            _snprintf_s(newTitle, sizeof(newTitle), _TRUNCATE, "(hotovo) %s", curTitle);
+            SetWindowText(HWindow, newTitle);
+        }
+
+        if (hasError && snap.ErrorMsg[0] != 0 && !snap.Cancelled)
+        {
+            if (IsBackground)
+            {
+                ShowWindow(HWindow, SW_SHOW);
+                IsBackground = FALSE;
+            }
+        }
         return TRUE;
     }
 
@@ -1062,7 +1448,8 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
 
     case WM_COMMAND:
     {
-        if (LOWORD(wParam) == IDB_BACKGROUND)
+        WORD cmdId = LOWORD(wParam);
+        if (cmdId == IDB_BACKGROUND)
         {
             IsBackground = TRUE;
             if (CenterToWnd != NULL)
@@ -1070,14 +1457,60 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
             ShowWindow(HWindow, SW_HIDE);
             return TRUE;
         }
-        if (LOWORD(wParam) == IDCANCEL)
+        else if (cmdId == IDB_SHOWDETAILS)
+        {
+            ToggleSimpleLook();
+            return TRUE;
+        }
+        else if (cmdId == IDB_SHOWERRORS)
+        {
+            ShowNextError();
+            return TRUE;
+        }
+        else if (cmdId == IDB_PAUSERESUME || cmdId == IDB_OPCONSPAUSERESUME)
         {
             if (Worker != NULL)
-                Worker->Cancel();
+            {
+                bool paused = !Worker->IsPaused();
+                Worker->SetPaused(paused);
+                SetDlgItemText(HWindow, IDB_PAUSERESUME, paused ? "Pokračovat" : "Pauza");
+                SetDlgItemText(HWindow, IDB_OPCONSPAUSERESUME, paused ? "Pokračovat" : "Pauza");
+                UpdateFromWorker();
+            }
+            return TRUE;
+        }
+        else if (cmdId == IDC_TR_CLOSE_ON_FINISH)
+        {
+            SftpCloseTransferDlgOnFinish = (IsDlgButtonChecked(HWindow, IDC_TR_CLOSE_ON_FINISH) == BST_CHECKED);
+            SaveSftpConfigurationImmediately(HWindow);
+            return TRUE;
+        }
+        else if (cmdId == IDB_OPOPERSSHOWONLYERR)
+        {
+            ShowOnlyErrors = (IsDlgButtonChecked(HWindow, IDB_OPOPERSSHOWONLYERR) == BST_CHECKED);
+            RefreshListViews();
+            return TRUE;
+        }
+        else if (cmdId == IDCANCEL)
+        {
+            if (OperationFinished)
+            {
+                if (CenterToWnd != NULL)
+                    EnableWindow(CenterToWnd, TRUE);
+                DestroyWindow(HWindow);
+                return TRUE;
+            }
+
             if (!WantCancel)
             {
-                WantCancel = TRUE;
-                EnableCancel(FALSE);
+                if (SalamanderGeneral->SalMessageBox(HWindow, "Opravdu přerušit operaci?", LoadStr(IDS_PLUGINNAME),
+                                                     MB_YESNO | MB_ICONQUESTION) == IDYES)
+                {
+                    WantCancel = TRUE;
+                    EnableCancel(FALSE);
+                    if (Worker != NULL)
+                        Worker->Cancel();
+                }
             }
             return TRUE;
         }
