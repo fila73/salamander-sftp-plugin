@@ -106,6 +106,41 @@
 #define IDC_LIST_HEADER                 2510
 #define IDC_LIST                        2511
 
+// Transfer Dialog extensions (FTP style)
+#define IDT_TR_TIME_LEFT                632
+#define IDT_TR_ELAPSED_TIME             633
+#define IDC_TR_CLOSE_ON_FINISH          634
+#define IDB_SHOWDETAILS                 635
+#define IDB_SHOWERRORS                  636
+#define IDB_PAUSERESUME                 637
+#define IDC_DLGSPLITBAR                 638
+#define IDL_CONNECTIONS                 639
+#define IDT_CONNECTIONS                 641
+#define IDB_OPCONSSOLVEERROR            642
+#define IDB_OPCONSPAUSERESUME           643
+#define IDB_OPCONSSTOP                  644
+#define IDT_OPERATIONSTEXT              645
+#define IDL_OPERATIONS                  646
+#define IDB_OPOPERSSHOWONLYERR          647
+#define IDB_OPOPERSSOLVEERROR           648
+#define IDB_OPOPERSRETRY                649
+#define IDB_OPOPERSSKIP                 650
+#define IDM_FILEEXISTSERRRETRY          651
+
+// Conflict / Overwrite Dialog
+#define IDD_CONFLICTDLG                 660
+#define CM_SIED_RESUME                  1306
+#define CM_SIED_RESUMEOROVR             1307
+#define CM_SIED_OVERWRITE               1308
+#define CM_SIED_OVERWRITEALL            1309
+#define CM_SCRD_USEALTNAME              1310
+#define IDB_SCRD_SKIP                   1311
+#define IDC_SCRD_APPLYTOALL             1312
+#define IDE_SCRD_SRCPATH                1313
+#define IDE_SCRD_SRCNAME                1314
+#define IDE_SCRD_TGTPATH                1315
+#define IDE_SCRD_TGTNAME                1316
+
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
