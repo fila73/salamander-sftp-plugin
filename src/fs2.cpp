@@ -378,8 +378,9 @@ CCalcSizeProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 static char g_ProgressConnName[128] = "";
 
 CSftpTransferProgressDlg::CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin)
-    : CCommonDialog(HLanguage, IDD_TRANSFERDLG, parent, origin)
+    : CCommonDialog(HLanguage, IDD_TRANSFERDLG, NULL, origin)
 {
+    CenterToWnd = parent != NULL ? parent : (SalamanderGeneral != NULL ? SalamanderGeneral->GetMainWindowHWND() : NULL);
     FileProgressBar = NULL;
     TotalProgressBar = NULL;
     WantCancel = FALSE;
@@ -922,6 +923,11 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
             Worker->SetObserver(this);
             Worker->SetDlgHwnd(HWindow);
         }
+        if (CenterToWnd != NULL)
+        {
+            SalamanderGeneral->MultiMonCenterWindow(HWindow, CenterToWnd, TRUE);
+        }
+        SetWindowLongPtr(HWindow, GWL_EXSTYLE, GetWindowLongPtr(HWindow, GWL_EXSTYLE) | WS_EX_APPWINDOW);
         break;
     }
 
@@ -1011,7 +1017,8 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         if (NotifyIsMove && NotifySourcePath[0] != 0)
             SalamanderGeneral->PostChangeOnPathNotification(NotifySourcePath, TRUE);
 
-        EnableWindow(Parent, TRUE);
+        if (CenterToWnd != NULL)
+            EnableWindow(CenterToWnd, TRUE);
         DestroyWindow(HWindow);
         return TRUE;
     }
@@ -1058,7 +1065,8 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
         if (LOWORD(wParam) == IDB_BACKGROUND)
         {
             IsBackground = TRUE;
-            EnableWindow(Parent, TRUE);
+            if (CenterToWnd != NULL)
+                EnableWindow(CenterToWnd, TRUE);
             ShowWindow(HWindow, SW_HIDE);
             return TRUE;
         }

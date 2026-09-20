@@ -320,3 +320,9 @@ Při souběžném spuštění více přenosů (stahování i nahrávání) v rá
 4. **Korektní teardown při zavření Salamandera (`~CPluginFSInterface`)**:
    - Při ukončení Salamandera (`WM_USER_CLOSE_MAINWND`) probíhá destrukce všech instancí `CPluginFSInterface`.
    - Destruktor prochází `ActiveTransferDlgs`, odpojuje worker dialogy (`dlg->SetFS(NULL)`, `dlg->DetachWorker()`) a bezpečně ničí okna (`DestroyWindow`), čímž je zamezeno pádům na neplatné ukazatele po uvolnění pluginu.
+5. **Nezávislá nemodální okna a Z-pořadí (`Parent = NULL`, `WS_EX_APPWINDOW`)**:
+   - Ve Win32 API správce oken vždy drží vlastněné okno (`owned window`) nad jeho vlastníkem (`owner window`) v Z-pořadí, i když vlastník získá fokus.
+   - Předáním `Parent = NULL` do `CCommonDialog` se dialog stává unowned oknem.
+   - Původní `parent` se uloží do `CenterToWnd` a použije se pro jednorázové vycentrování v `WM_INITDIALOG` přes `SalamanderGeneral->MultiMonCenterWindow(HWindow, CenterToWnd, TRUE)`.
+   - Přidáním rozšířeného stylu `WS_EX_APPWINDOW` a stylu `WS_MINIMIZEBOX` získává přenosový dialog vlastní tlačítko na hlavním panelu Windows a tlačítko minimalizace v záhlaví.
+   - Při kliknutí do hlavního okna Salamandera se Salamander bez problémů přenese do popředí a dialogy jej netrvale nepřekrývají.

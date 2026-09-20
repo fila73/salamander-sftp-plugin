@@ -135,3 +135,26 @@ Při spuštění dvou souběžných operací kopírování v témže panelu/prof
 - [x] Nasazení binárky do `C:\Apps\samandarin\plugins\sftp\sftp.spl`.
 - [x] Dokumentace aktualizována.
 
+---
+
+# Nezávislá okna přenosů (Z-Order, kliknutí do hlavního okna & minimalizace)
+
+## Problém
+Přenosové dialogy zůstávaly trvale zobrazené navrchu (Always On Top) a překrývaly souborové panely i po kliknutí do hlavního okna Salamandera.
+
+## Příčina
+Předání `parent` (HWND hlavního okna Salamandera) do `CCommonDialog` vytvořilo dialog s Win32 vlastnictvím (`owned window`). Podle Win32 pravidel správce oken vždy drží vlastněné okno nad jeho vlastníkem v Z-pořadí, i když vlastník získá fokus.
+
+## Realizované změny
+1. **Unowned okno (`Parent = NULL`)**: Dialog `CSftpTransferProgressDlg` předává do `CCommonDialog` hodnotu `NULL` namísto HWND Salamandera (podle vzoru `COperationDlg` z FTP pluginu Salamandera).
+2. **Vycentrování (`CenterToWnd`)**: Původní `parent` se uchová v proměnné `CenterToWnd` a v `WM_INITDIALOG` se okno jednorázově vycentruje vůči Salamanderu pomocí `SalamanderGeneral->MultiMonCenterWindow`.
+3. **Taskbar a minimalizace (`WS_EX_APPWINDOW`, `WS_MINIMIZEBOX`)**: Dialog má styl `WS_EX_APPWINDOW` a v resource souborech `lang_cs.rc` i `lang_en.rc` styl `WS_MINIMIZEBOX`.
+4. **Z-order chování**: Při kliknutí do Salamandera se Salamander bez problémů přenese do popředí a dialog jej nepřekrývá.
+
+## Stav
+- [x] Implementace v `src/sftp.h`, `src/fs2.cpp`, `src/lang/lang_cs.rc`, `src/lang/lang_en.rc`.
+- [x] Úspěšná kompilace `sftp.spl`, `english.slg`, `czech.slg`.
+- [x] Spuštění testů (100% pass).
+- [x] Nasazení do `C:\Apps\samandarin\plugins\sftp\` a `lang\`.
+- [x] Dokumentace aktualizována.
+

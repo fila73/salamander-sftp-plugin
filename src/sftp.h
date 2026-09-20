@@ -535,6 +535,7 @@ protected:
     bool OwnsWorker;
     CPluginFSInterface* FS;
     BOOL IsBackground;
+    HWND CenterToWnd;
     char ConnName[128];
     char FromConnName[128];
     char ToConnName[128];
