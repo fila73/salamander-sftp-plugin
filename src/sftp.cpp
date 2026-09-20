@@ -134,7 +134,35 @@ char* LoadStr(int resID)
     return SalamanderGeneral->LoadStr(HLanguage, resID);
 }
 
-// Hook procedure for panel Spacebar key detection on SFTP folders
+// Transfer dialog configuration and HWND tracking
+BOOL SftpCloseTransferDlgOnFinish = TRUE;
+std::vector<HWND> g_TransferDlgHwnds;
+
+void SftpRegisterTransferDlgHwnd(HWND hwnd)
+{
+    if (hwnd == NULL)
+        return;
+    for (size_t i = 0; i < g_TransferDlgHwnds.size(); i++)
+    {
+        if (g_TransferDlgHwnds[i] == hwnd)
+            return;
+    }
+    g_TransferDlgHwnds.push_back(hwnd);
+}
+
+void SftpUnregisterTransferDlgHwnd(HWND hwnd)
+{
+    for (auto it = g_TransferDlgHwnds.begin(); it != g_TransferDlgHwnds.end(); ++it)
+    {
+        if (*it == hwnd)
+        {
+            g_TransferDlgHwnds.erase(it);
+            break;
+        }
+    }
+}
+
+// Hook procedure for panel Spacebar key detection on SFTP folders and modeless dialogs navigation
 static HHOOK s_hGetMsgHook = NULL;
 
 static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -142,6 +170,26 @@ static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     if (nCode >= 0 && wParam == PM_REMOVE)
     {
         MSG* pMsg = (MSG*)lParam;
+        if (pMsg != NULL && pMsg->message != WM_NULL)
+        {
+            // Modeless transfer dialog keyboard navigation (Tab, Shift+Tab, Arrows, Space, Enter, Esc)
+            for (size_t i = 0; i < g_TransferDlgHwnds.size(); i++)
+            {
+                HWND hDlg = g_TransferDlgHwnds[i];
+                if (hDlg != NULL && IsWindow(hDlg))
+                {
+                    if (pMsg->hwnd == hDlg || IsChild(hDlg, pMsg->hwnd))
+                    {
+                        if (IsDialogMessage(hDlg, pMsg))
+                        {
+                            pMsg->message = WM_NULL;
+                            return 0;
+                        }
+                    }
+                }
+            }
+        }
+
         if (pMsg && pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_SPACE)
         {
             // Check modifier keys: no Ctrl, no Alt, no Shift
@@ -759,6 +807,9 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
         registry->GetValue(regKey, CONFIG_DFSTYPEFIXEDWIDTH, REG_DWORD, &DFSTypeFixedWidth, sizeof(DWORD));
         registry->GetValue(regKey, CONFIG_DFSTYPEWIDTH, REG_DWORD, &DFSTypeWidth, sizeof(DWORD));
         registry->GetValue(regKey, CONFIG_LEAVEPANELACTION, REG_DWORD, &SftpLeavePanelAction, sizeof(DWORD));
+        DWORD closeOnFin = 1;
+        if (registry->GetValue(regKey, "CloseTransferDlgOnFinish", REG_DWORD, &closeOnFin, sizeof(DWORD)))
+            SftpCloseTransferDlgOnFinish = (closeOnFin != 0);
 
         // load saved servers (profiles)
         HKEY serversKey;
@@ -851,6 +902,8 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
     registry->SetValue(regKey, CONFIG_DFSTYPEFIXEDWIDTH, REG_DWORD, &DFSTypeFixedWidth, sizeof(DWORD));
     registry->SetValue(regKey, CONFIG_DFSTYPEWIDTH, REG_DWORD, &DFSTypeWidth, sizeof(DWORD));
     registry->SetValue(regKey, CONFIG_LEAVEPANELACTION, REG_DWORD, &SftpLeavePanelAction, sizeof(DWORD));
+    DWORD closeOnFin = SftpCloseTransferDlgOnFinish ? 1 : 0;
+    registry->SetValue(regKey, "CloseTransferDlgOnFinish", REG_DWORD, &closeOnFin, sizeof(DWORD));
 
     // save saved servers (profiles)
     HKEY serversKey;

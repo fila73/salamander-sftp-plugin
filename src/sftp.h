@@ -50,6 +50,14 @@ extern int AssignedFSNameLen;
 // leave panel action: 0 = ask, 1 = always disconnect, 2 = always keep (detach)
 extern int SftpLeavePanelAction;
 
+// transfer dialog auto close on finish (default TRUE)
+extern BOOL SftpCloseTransferDlgOnFinish;
+
+// active transfer dialog HWND list for modeless keyboard navigation (IsDialogMessage)
+extern std::vector<HWND> g_TransferDlgHwnds;
+void SftpRegisterTransferDlgHwnd(HWND hwnd);
+void SftpUnregisterTransferDlgHwnd(HWND hwnd);
+
 // invoked for the first instance of SFTP: optional cleanup of its own temp directory
 // with file copies extracted from archives by previous SFTP instances
 void ClearTEMPIfNeeded(HWND parent);
