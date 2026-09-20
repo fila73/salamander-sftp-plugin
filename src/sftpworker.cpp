@@ -39,13 +39,14 @@ static void SftpSplitPathAndName(const char* fullPath, char separator, std::stri
 }
 
 CSftpTransferWorker::CSftpTransferWorker()
-    : ThreadHandle(NULL), ThreadId(0), WakeEvent(NULL), StopEvent(NULL),
-      DlgHwnd(NULL), AttachedObserver(NULL), Initialized(true), OverwriteAllDecision(-1)
+    : ThreadHandle(NULL), ThreadId(0), WakeEvent(NULL), StopEvent(NULL), RunEvent(NULL),
+      DlgHwnd(NULL), CurrentTaskIndex(0), AttachedObserver(NULL), Initialized(true), OverwriteAllDecision(-1)
 {
     InitializeCriticalSection(&QueueLock);
     State.Init();
     WakeEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     StopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    RunEvent = CreateEvent(NULL, TRUE, TRUE, NULL); // manual reset, initially signaled (running)
     memset(&Profile, 0, sizeof(Profile));
 }
 
@@ -69,6 +70,11 @@ CSftpTransferWorker::~CSftpTransferWorker()
         CloseHandle(StopEvent);
         StopEvent = NULL;
     }
+    if (RunEvent)
+    {
+        CloseHandle(RunEvent);
+        RunEvent = NULL;
+    }
     DeleteCriticalSection(&QueueLock);
     State.Destroy();
 }
@@ -88,11 +94,16 @@ void CSftpTransferWorker::Reset()
 
     EnterCriticalSection(&QueueLock);
     TaskQueue.clear();
+    AllTasks.clear();
+    CurrentTaskIndex = 0;
     LeaveCriticalSection(&QueueLock);
 
     EnterCriticalSection(&State.Lock);
     State.Reset();
     LeaveCriticalSection(&State.Lock);
+
+    if (RunEvent)
+        SetEvent(RunEvent);
 
     OverwriteAllDecision = -1;
 }
@@ -120,6 +131,8 @@ bool CSftpTransferWorker::Start(const CSftpProfile& profile, HWND dlgHwnd)
 
     ResetEvent(StopEvent);
     ResetEvent(WakeEvent);
+    if (RunEvent)
+        SetEvent(RunEvent);
 
     EnterCriticalSection(&State.Lock);
     // Note: Do not wipe TotalItemsCount or TotalBytesExpected; they were set by EnqueueTask!
@@ -172,6 +185,8 @@ void CSftpTransferWorker::Stop()
 
     SetEvent(StopEvent);
     SetEvent(WakeEvent);
+    if (RunEvent)
+        SetEvent(RunEvent);
 
     if (WaitForSingleObject(ThreadHandle, 5000) == WAIT_TIMEOUT)
     {
@@ -192,13 +207,15 @@ void CSftpTransferWorker::Stop()
     }
 }
 
-
 void CSftpTransferWorker::EnqueueTask(const CSftpTransferTask& task)
 {
     if (!Initialized)
         return;
     EnterCriticalSection(&QueueLock);
-    TaskQueue.push_back(task);
+    CSftpTransferTask t = task;
+    t.Status = CSftpTransferTask::StatusWaiting;
+    TaskQueue.push_back(t);
+    AllTasks.push_back(t);
     EnterCriticalSection(&State.Lock);
     State.TotalItemsCount++;
     State.TotalBytesExpected += task.FileSize;
@@ -215,7 +232,39 @@ void CSftpTransferWorker::Cancel()
     EnterCriticalSection(&State.Lock);
     State.Cancelled = true;
     LeaveCriticalSection(&State.Lock);
+    if (RunEvent)
+        SetEvent(RunEvent);
     SetEvent(WakeEvent);
+}
+
+void CSftpTransferWorker::SetPaused(bool paused)
+{
+    if (!Initialized)
+        return;
+    EnterCriticalSection(&State.Lock);
+    State.IsPaused = paused;
+    LeaveCriticalSection(&State.Lock);
+
+    if (RunEvent)
+    {
+        if (paused)
+            ResetEvent(RunEvent);
+        else
+            SetEvent(RunEvent);
+    }
+
+    if (DlgHwnd)
+        PostMessage(DlgHwnd, WM_APP_SFTP_WORKER_UPDATE, 0, 0);
+}
+
+bool CSftpTransferWorker::IsPaused() const
+{
+    if (!Initialized)
+        return false;
+    EnterCriticalSection(const_cast<LPCRITICAL_SECTION>(&State.Lock));
+    bool paused = State.IsPaused;
+    LeaveCriticalSection(const_cast<LPCRITICAL_SECTION>(&State.Lock));
+    return paused;
 }
 
 bool CSftpTransferWorker::IsRunning() const
@@ -255,10 +304,20 @@ void CSftpTransferWorker::GetStateSnapshot(CSftpTransferState& outState)
     outState.LastUpdateTick = State.LastUpdateTick;
     outState.BytesPerSec = State.BytesPerSec;
     outState.IsRunning = State.IsRunning;
+    outState.IsPaused = State.IsPaused;
     outState.Cancelled = State.Cancelled;
     outState.HasError = State.HasError;
     memcpy(&outState.ErrorMsg, State.ErrorMsg, sizeof(State.ErrorMsg));
     LeaveCriticalSection(&State.Lock);
+}
+
+void CSftpTransferWorker::GetTasksSnapshot(std::vector<CSftpTransferTask>& outTasks)
+{
+    if (!Initialized)
+        return;
+    EnterCriticalSection(&QueueLock);
+    outTasks = AllTasks;
+    LeaveCriticalSection(&QueueLock);
 }
 
 unsigned __stdcall CSftpTransferWorker::ThreadEntryPoint(LPVOID param)
@@ -346,7 +405,38 @@ void CSftpTransferWorker::ThreadLoop()
         State.CurrentItemIndex++;
         LeaveCriticalSection(&State.Lock);
 
+        size_t taskIdx = (size_t)-1;
+        EnterCriticalSection(&QueueLock);
+        if (CurrentTaskIndex < AllTasks.size())
+        {
+            taskIdx = CurrentTaskIndex++;
+            AllTasks[taskIdx].Status = CSftpTransferTask::StatusRunning;
+        }
+        LeaveCriticalSection(&QueueLock);
+
+        if (DlgHwnd)
+            PostMessage(DlgHwnd, WM_APP_SFTP_WORKER_UPDATE, 0, 0);
+
         bool success = ExecuteTask(currentTask);
+
+        EnterCriticalSection(&QueueLock);
+        if (taskIdx != (size_t)-1 && taskIdx < AllTasks.size())
+        {
+            if (success)
+                AllTasks[taskIdx].Status = CSftpTransferTask::StatusDone;
+            else if (State.Cancelled)
+                AllTasks[taskIdx].Status = CSftpTransferTask::StatusSkipped;
+            else
+            {
+                AllTasks[taskIdx].Status = CSftpTransferTask::StatusError;
+                AllTasks[taskIdx].ErrorMsg = WorkerConn.LastError();
+            }
+        }
+        LeaveCriticalSection(&QueueLock);
+
+        if (DlgHwnd)
+            PostMessage(DlgHwnd, WM_APP_SFTP_WORKER_UPDATE, 0, 0);
+
         if (!success)
         {
             EnterCriticalSection(&State.Lock);
@@ -376,7 +466,7 @@ void CSftpTransferWorker::ThreadLoop()
 #endif
 }
 
-bool CSftpTransferWorker::ExecuteTask(const CSftpTransferTask& task)
+bool CSftpTransferWorker::ExecuteTask(CSftpTransferTask& task)
 {
     bool ok = false;
     if (task.TaskType == CSftpTransferTask::TaskDownload)
@@ -718,6 +808,14 @@ bool CSftpTransferWorker::StaticProgressCallback(void* ctx, const char* name, un
 
 bool CSftpTransferWorker::ReportProgress(const char* name, unsigned __int64 done, unsigned __int64 total)
 {
+    if (RunEvent && StopEvent)
+    {
+        HANDLE waitHandles[2] = { StopEvent, RunEvent };
+        DWORD wr = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+        if (wr == WAIT_OBJECT_0)
+            return false;
+    }
+
     EnterCriticalSection(&State.Lock);
     if (State.Cancelled)
     {

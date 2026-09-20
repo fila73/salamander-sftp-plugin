@@ -19,13 +19,23 @@
 struct CSftpTransferTask
 {
     enum Type { TaskDownload, TaskUpload };
+    enum TaskStatus { StatusWaiting = 0, StatusRunning, StatusDone, StatusError, StatusSkipped };
+
     Type TaskType;
+    TaskStatus Status;
     std::string RemotePath;
     std::string LocalPath;
     unsigned __int64 FileSize;      // expected file size (or 0 if unknown)
     unsigned __int64 ResumeOffset;  // 0 = start from beginning
     bool IsDirectory;               // true = recursive directory
     bool DeleteSourceOnSuccess;     // true for Move operation
+    std::string ErrorMsg;
+
+    CSftpTransferTask()
+        : TaskType(TaskDownload), Status(StatusWaiting),
+          FileSize(0), ResumeOffset(0), IsDirectory(false), DeleteSourceOnSuccess(false)
+    {
+    }
 };
 
 // Thread-safe shared state snapshot
@@ -48,6 +58,7 @@ struct CSftpTransferState
     double BytesPerSec;
 
     volatile bool IsRunning;
+    volatile bool IsPaused;
     volatile bool Cancelled;
     volatile bool HasError;
     char ErrorMsg[512];
@@ -77,6 +88,7 @@ struct CSftpTransferState
         LastUpdateTick = 0;
         BytesPerSec = 0.0;
         IsRunning = false;
+        IsPaused = false;
         Cancelled = false;
         HasError = false;
         ErrorMsg[0] = 0;
@@ -109,6 +121,10 @@ public:
     // Cancel ongoing and queued transfers
     void Cancel();
 
+    // Pause / Resume transfer
+    void SetPaused(bool paused);
+    bool IsPaused() const;
+
     bool IsRunning() const;
     bool HasTasks() const;
     void SetDlgHwnd(HWND hwnd) { DlgHwnd = hwnd; }
@@ -116,6 +132,8 @@ public:
 
     // Take a thread-safe snapshot of the current state
     void GetStateSnapshot(CSftpTransferState& outState);
+    // Take a thread-safe snapshot of all transfer tasks
+    void GetTasksSnapshot(std::vector<CSftpTransferTask>& outTasks);
 
     // Get reference to worker connection profile
     const CSftpProfile& GetProfile() const { return Profile; }
@@ -124,7 +142,7 @@ private:
     static unsigned __stdcall ThreadEntryPoint(void* param);
     void ThreadLoop();
 
-    bool ExecuteTask(const CSftpTransferTask& task);
+    bool ExecuteTask(CSftpTransferTask& task);
     bool DoDownloadRecursive(const std::string& remote, const std::string& local, bool isDir);
     bool DoUploadRecursive(const std::string& local, const std::string& remote, bool isDir);
 
@@ -135,10 +153,13 @@ private:
     DWORD ThreadId;
     HANDLE WakeEvent;
     HANDLE StopEvent;
+    HANDLE RunEvent;
     HWND DlgHwnd;
 
     CRITICAL_SECTION QueueLock;
     std::deque<CSftpTransferTask> TaskQueue;
+    std::vector<CSftpTransferTask> AllTasks;
+    size_t CurrentTaskIndex;
 
     CSftpConnection WorkerConn;
     CSftpProfile Profile;
