@@ -60,4 +60,12 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
 - **Popis**: Implementace metody `TryCloseOrDetach` a `GetChangeDriveOrDisconnectItem` podle vzoru vestavěného FTP pluginu Salamandera.
 - **Stav**: Kompletně dokončeno. Při opuštění SFTP panelu (`FSTRYCLOSE_CHANGEPATH`) se uživatele plugin zeptá přes `SalMessageBoxEx` na **Odpojit** / **Ponechat** / **Storno**. Při volbě Ponechat přejde FS do režimu Detached FS (`detach = TRUE`), běží dál na pozadí včetně keepalive a lze se k němu vrátit z `Alt+F1`/`Alt+F2` se zobrazeným jménem profilu `[NAS]`. Volbu lze trvale uložit v registru (`LeavePanelAction`).
 
+### 15. Plnohodnotný dialog konfliktu (přepsat/navázat), 2-módový Progress dialog (Simple/Detailed) a klávesnicová navigace [HOTOVO – v1.3.2]
+- **Popis**: Kompletní přiblížení chování a možností vestavěnému FTP pluginu v Open Salamanderu (`IDD_OPERATIONDLG` a `IDD_SOLVEITEMERRSIMPLEEX`):
+  1. Dialog řešení konfliktu existujícího souboru (`IDD_CONFLICTDLG`): dropdown split tlačítko „Opakovat" s popup menu (*Opakovat*, *Pokračovat / navázat*, *Pokračovat nebo přepsat*, *Použít alternativní název*), editbox cílového jména, tlačítka Přepsat, Přepsat vše, Přeskočit, Storno, Nápověda a checkbox pro zapamatování volby pro celou operaci.
+  2. 2-módový Progress dialog: kompaktní zobrazení s ETA odpočtem, uplynulým časem, stavem a progress barem, dynamické rozbalení po stisku **„Detaily >>"** nebo **„Chyby >>"** odhalující seznam Spojení a seznam Operací per soubor s ikonami a stavy, filtr `[ ] Zobrazit jen chyby`, tlačítko **Pauza / Pokračovat** a checkbox `[x] Po skončení operace zavřít toto okno` s perzistencí v registru.
+  3. Klávesnicová navigace: plná podpora `Tab`, `Shift+Tab` a šipek přes dialogový hook `IsDialogMessage`.
+- **Stav**: Kompletně dokončeno a nasazeno.
+
+
 

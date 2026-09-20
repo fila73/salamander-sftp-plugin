@@ -355,3 +355,51 @@ Při provozu asynchronních přenosů ve vedlejších vláknech je nutné dodrž
      ```
    - Před ukončením každého worker vlákna se volá `OPENSSL_thread_stop()`, které uvolní případné alokace v TLS kontextu daného vlákna.
 
+---
+
+## 15. Dialog konfliktu existujícího souboru, 2-módový Progress dialog (Simple/Detailed) a klávesnicová navigace
+
+Pro zajištění konzistence se standardními pluginy Salamanderu (zejména vestavěným FTP pluginem) a vysokého uživatelského komfortu:
+
+### 1. Dialog řešení konfliktu existujícího souboru (`IDD_CONFLICTDLG` / `CSftpConflictDlg`)
+- **Detekce konfliktu**: Před zahájením zápisu souboru ve workeru (`DoDownloadRecursive`, `DoUploadRecursive`) se ověří existence cílového souboru (`GetFileAttributesEx` pro lokální disk, `libssh2_sftp_stat` pro SFTP).
+- **Zobrazení dialogu**: Pokud soubor existuje a uživatel dříve nezvolil trvalou akci pro celou operaci ("Pamatovat si volbu" / Apply to all), vyvolá se `CSftpConflictDlg`.
+- **Dropdown split tlačítko "Opakovat"**:
+  - Pomocí `SalamanderGUI->AttachButton(HWindow, IDOK, BTF_DROPDOWN)` se standardní tlačítko Windows změní na split tlačítko s rozbalovací šipkou.
+  - Při kliknutí na šipku nebo stisku klávesy se vyvolá popup menu `IDM_FILEEXISTSERRRETRY` s možnostmi:
+    - *Opakovat* (`IDOK`) – opakuje operaci od začátku.
+    - *Pokračovat* (`CM_SIED_RESUME`) – naváže na existující soubor od jeho velikosti (`resumeOffset = existingSize`).
+    - *Pokračovat nebo přepsat* (`CM_SIED_RESUMEOROVR`) – pokud je cílový soubor menší, naváže; pokud je stejný nebo větší, přepíše.
+    - *Použít alternativní název* (`CM_SCRD_USEALTNAME`) – automaticky vygeneruje např. `soubor (1).ext` do editboxu nového cílového názvu přes `SftpGenerateAltName`.
+- **Tlačítka dialogu**: Přepsat (`CM_SIED_OVERWRITE`), Přepsat vše (`CM_SIED_OVERWRITEALL`), Přeskočit (`IDB_SCRD_SKIP`), Storno (`IDCANCEL`), Nápověda (`IDHELP`).
+
+### 2. Informativní přenosový dialog se dvěma módy (`CSftpTransferProgressDlg`)
+- **Kompaktní režim (Simple Look)**:
+  - Zobrazuje zdrojovou a cílovou cestu, zbývající čas (ETA, výpočet..., pozastaveno, hotovo), uplynulý čas, stav přenesených dat (MB/kB a počet chyb) a celkový progress bar.
+  - Checkbox `[x] Po skončení operace zavřít toto okno` s perzistencí v registru (`CloseTransferDlgOnFinish`).
+  - Pokud checkbox není zaškrtnut nebo došlo k chybě: dialog zůstane po skončení otevřený, tlačítko Storno se změní na „Zavřít" s výchozím fokusem (`BS_DEFPUSHBUTTON`), tlačítka Pauza a Na pozadí se zakáží a stav ukáže `(hotovo)` nebo `(chyba)`.
+- **Detailní režim (Detailed Look – "Detaily >>" / "Chyby >>")**:
+  - Dialog se dynamicky zvětší směrem dolů (`ShowControlsAndChangeSize` na základě uložené původní výšky okna z `WM_INITDIALOG`).
+  - **ListView Spojení (`IDL_CONNECTIONS`)**: zobrazuje aktivní připojení (ID, Akce, Stav) a tlačítka.
+  - **ListView Operace per soubor (`IDL_OPERATIONS`)**: zobrazuje všechny položky fronty se systémovými ikonami souborů (`SHGetFileInfo`), popisem a stavem (`Čeká`, `Zpracovávám`, `Dokončeno`, `Chyba`, `Přeskočeno`). Data se poskytují virtuálně přes `LVN_GETDISPINFOA` a `LVN_GETDISPINFOW`.
+  - **Filtr chyb**: Checkbox `[ ] Zobrazit jen chyby` filtruje pouze položky se stavem `StatusError`.
+  - **Tlačítko "Chyby >>"**: je aktivní pouze při chybě; po stisku automaticky rozbalí detaily, aktivuje filtr chyb a zaměří chybující položku.
+  - **Tlačítko "Pauza" / "Pokračovat"**: volá `Worker->SetPaused()`, což pozastaví smyčku worker threadu pomocí Win32 `ResetEvent(RunEvent)` a při pokračování obnoví přenos přes `SetEvent(RunEvent)`.
+
+### 3. Klávesnicová navigace v modeless dialozích (`IsDialogMessage`)
+- Modeless (nemodální) dialogy v aplikaci s hlavní smyčkou zpráv hlavního okna nedostávají automaticky klávesy `Tab`, `Shift+Tab`, `Esc` ani šipky pro přepínání prvků, pokud zpráva neprojde funkcí `IsDialogMessage`.
+- Plugin v `src/sftp.cpp` udržuje globální seznam aktivních HWND dialogů `g_TransferDlgHwnds` chráněný kritickou sekcí.
+- Ve vláknovém hooku `GetMsgHookProc` (`WH_GETMESSAGE`):
+  ```cpp
+  for (HWND hDlg : dlgList)
+  {
+      if (IsWindow(hDlg) && IsDialogMessage(hDlg, pMsg))
+      {
+          pMsg->message = WM_NULL; // Zpráva byla zkonzumována dialogem
+          return 0;
+      }
+  }
+  ```
+- Tím je zaručena 100% spolehlivá klávesnicová navigace mezi všemi prvky a tlačítky bez kolizí s hlavní aplikací.
+
+
