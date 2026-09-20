@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "precomp.h"
 #include "sftp.h"
 
 enum ESftpConflictAction

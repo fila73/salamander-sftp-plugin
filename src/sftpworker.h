@@ -147,6 +147,12 @@ private:
     bool Initialized;
 
     // Overwrite decision handling in worker
-    int OverwriteAllDecision; // -1 = ask, 0 = skip, 1 = overwrite all, 2 = resume all
-    int AskOverwriteWorker(const char* path, bool isLocal, unsigned __int64 existingSize, unsigned __int64 newSize, unsigned __int64& outResumeOffset);
+    int OverwriteAllDecision; // -1 = ask, 0 = skip all, 1 = overwrite all, 2 = resume all, 3 = resume or overwrite all
+    int AskOverwriteWorker(const char* srcPath, const char* srcName,
+                           const char* tgtPath, const char* tgtName,
+                           bool isLocalTarget,
+                           unsigned __int64 existingSize, unsigned __int64 newSize,
+                           unsigned __int64& outResumeOffset,
+                           std::string& outNewTargetName);
 };
+

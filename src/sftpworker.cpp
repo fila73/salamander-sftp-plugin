@@ -1,7 +1,9 @@
 // Copyright © 2026 Dupl3xx
 //
 // Background worker thread for asynchronous SFTP transfers.
+#include "precomp.h"
 #include "sftpworker.h"
+#include "sftpconflictdlg.h"
 #include <process.h>
 #include <shlwapi.h>
 #include <stdio.h>
@@ -9,9 +11,36 @@
 #include <openssl/crypto.h>
 #endif
 
+static void SftpSplitPathAndName(const char* fullPath, char separator, std::string& outDir, std::string& outName)
+{
+    if (fullPath == NULL || fullPath[0] == 0)
+    {
+        outDir = "";
+        outName = "";
+        return;
+    }
+    const char* p = strrchr(fullPath, separator);
+    if (separator == '\\')
+    {
+        const char* p2 = strrchr(fullPath, '/');
+        if (p2 > p)
+            p = p2;
+    }
+    if (p != NULL)
+    {
+        outDir.assign(fullPath, p - fullPath);
+        outName.assign(p + 1);
+    }
+    else
+    {
+        outDir = "";
+        outName = fullPath;
+    }
+}
+
 CSftpTransferWorker::CSftpTransferWorker()
     : ThreadHandle(NULL), ThreadId(0), WakeEvent(NULL), StopEvent(NULL),
-      DlgHwnd(NULL), OverwriteAllDecision(-1), AttachedObserver(NULL), Initialized(true)
+      DlgHwnd(NULL), AttachedObserver(NULL), Initialized(true), OverwriteAllDecision(-1)
 {
     InitializeCriticalSection(&QueueLock);
     State.Init();
@@ -393,13 +422,15 @@ bool CSftpTransferWorker::DoDownloadRecursive(const std::string& remote, const s
 
     if (!isDir)
     {
+        std::string actRemote = remote;
+        std::string actLocal = local;
         unsigned __int64 resumeOffset = 0;
-        if (GetFileAttributesA(local.c_str()) != INVALID_FILE_ATTRIBUTES)
+        if (GetFileAttributesA(actLocal.c_str()) != INVALID_FILE_ATTRIBUTES)
         {
             // Local file exists - determine whether to resume, overwrite, or skip
             WIN32_FILE_ATTRIBUTE_DATA fad;
             unsigned __int64 localSize = 0;
-            if (GetFileAttributesExA(local.c_str(), GetFileExInfoStandard, &fad))
+            if (GetFileAttributesExA(actLocal.c_str(), GetFileExInfoStandard, &fad))
             {
                 ULARGE_INTEGER uli;
                 uli.LowPart = fad.nFileSizeLow;
@@ -408,15 +439,28 @@ bool CSftpTransferWorker::DoDownloadRecursive(const std::string& remote, const s
             }
 
             unsigned __int64 remoteSize = 0;
-            WorkerConn.RemoteFileSize(remote.c_str(), remoteSize);
+            WorkerConn.RemoteFileSize(actRemote.c_str(), remoteSize);
 
-            int decision = AskOverwriteWorker(local.c_str(), true, localSize, remoteSize, resumeOffset);
+            std::string srcDir, srcName, tgtDir, tgtName, newTgtName;
+            SftpSplitPathAndName(actRemote.c_str(), '/', srcDir, srcName);
+            SftpSplitPathAndName(actLocal.c_str(), '\\', tgtDir, tgtName);
+
+            int decision = AskOverwriteWorker(srcDir.c_str(), srcName.c_str(),
+                                             tgtDir.c_str(), tgtName.c_str(),
+                                             true, localSize, remoteSize, resumeOffset, newTgtName);
             if (decision == 0) // Skip
                 return true;
             if (decision < 0)  // Cancel
             {
                 Cancel();
                 return false;
+            }
+            if (!newTgtName.empty() && newTgtName != tgtName)
+            {
+                if (!tgtDir.empty())
+                    actLocal = tgtDir + "\\" + newTgtName;
+                else
+                    actLocal = newTgtName;
             }
         }
 
@@ -428,7 +472,7 @@ bool CSftpTransferWorker::DoDownloadRecursive(const std::string& remote, const s
         }
         LeaveCriticalSection(&State.Lock);
 
-        return WorkerConn.Download(remote.c_str(), local.c_str(), resumeOffset);
+        return WorkerConn.Download(actRemote.c_str(), actLocal.c_str(), resumeOffset);
     }
 
     // Recursive directory download
@@ -476,15 +520,17 @@ bool CSftpTransferWorker::DoUploadRecursive(const std::string& local, const std:
 
     if (!isDir)
     {
+        std::string actLocal = local;
+        std::string actRemote = remote;
         unsigned __int64 resumeOffset = 0;
-        if (WorkerConn.PathType(remote.c_str()) == 1) // Remote file exists
+        if (WorkerConn.PathType(actRemote.c_str()) == 1) // Remote file exists
         {
             unsigned __int64 remoteSize = 0;
-            WorkerConn.RemoteFileSize(remote.c_str(), remoteSize);
+            WorkerConn.RemoteFileSize(actRemote.c_str(), remoteSize);
 
             WIN32_FILE_ATTRIBUTE_DATA fad;
             unsigned __int64 localSize = 0;
-            if (GetFileAttributesExA(local.c_str(), GetFileExInfoStandard, &fad))
+            if (GetFileAttributesExA(actLocal.c_str(), GetFileExInfoStandard, &fad))
             {
                 ULARGE_INTEGER uli;
                 uli.LowPart = fad.nFileSizeLow;
@@ -492,13 +538,31 @@ bool CSftpTransferWorker::DoUploadRecursive(const std::string& local, const std:
                 localSize = uli.QuadPart;
             }
 
-            int decision = AskOverwriteWorker(remote.c_str(), false, remoteSize, localSize, resumeOffset);
+            std::string srcDir, srcName, tgtDir, tgtName, newTgtName;
+            SftpSplitPathAndName(actLocal.c_str(), '\\', srcDir, srcName);
+            SftpSplitPathAndName(actRemote.c_str(), '/', tgtDir, tgtName);
+
+            int decision = AskOverwriteWorker(srcDir.c_str(), srcName.c_str(),
+                                             tgtDir.c_str(), tgtName.c_str(),
+                                             false, remoteSize, localSize, resumeOffset, newTgtName);
             if (decision == 0) // Skip
                 return true;
             if (decision < 0)  // Cancel
             {
                 Cancel();
                 return false;
+            }
+            if (!newTgtName.empty() && newTgtName != tgtName)
+            {
+                if (!tgtDir.empty())
+                {
+                    if (tgtDir.back() == '/')
+                        actRemote = tgtDir + newTgtName;
+                    else
+                        actRemote = tgtDir + "/" + newTgtName;
+                }
+                else
+                    actRemote = newTgtName;
             }
         }
 
@@ -510,7 +574,7 @@ bool CSftpTransferWorker::DoUploadRecursive(const std::string& local, const std:
         }
         LeaveCriticalSection(&State.Lock);
 
-        return WorkerConn.Upload(local.c_str(), remote.c_str(), resumeOffset);
+        return WorkerConn.Upload(actLocal.c_str(), actRemote.c_str(), resumeOffset);
     }
 
     // Recursive directory upload
@@ -557,9 +621,16 @@ bool CSftpTransferWorker::DoUploadRecursive(const std::string& local, const std:
     return ok;
 }
 
-int CSftpTransferWorker::AskOverwriteWorker(const char* path, bool isLocal, unsigned __int64 existingSize, unsigned __int64 newSize, unsigned __int64& outResumeOffset)
+int CSftpTransferWorker::AskOverwriteWorker(const char* srcPath, const char* srcName,
+                                           const char* tgtPath, const char* tgtName,
+                                           bool isLocalTarget,
+                                           unsigned __int64 existingSize, unsigned __int64 newSize,
+                                           unsigned __int64& outResumeOffset,
+                                           std::string& outNewTargetName)
 {
     outResumeOffset = 0;
+    outNewTargetName.clear();
+
     if (OverwriteAllDecision == 1) // Overwrite all
         return 1;
     if (OverwriteAllDecision == 0) // Skip all
@@ -570,14 +641,73 @@ int CSftpTransferWorker::AskOverwriteWorker(const char* path, bool isLocal, unsi
             outResumeOffset = existingSize;
         return 1;
     }
-
-    // By default for non-interactive / background: resume if partial, overwrite otherwise
-    if (existingSize > 0 && existingSize < newSize)
+    if (OverwriteAllDecision == 3) // Resume or overwrite all
     {
-        outResumeOffset = existingSize;
-        return 1; // Resume
+        if (existingSize > 0 && existingSize < newSize)
+            outResumeOffset = existingSize;
+        else
+            outResumeOffset = 0;
+        return 1;
     }
-    return 1; // Overwrite
+
+    if (DlgHwnd != NULL && IsWindow(DlgHwnd))
+    {
+        CSftpConflictDlg dlg(DlgHwnd, srcPath, srcName, tgtPath, tgtName, newSize, existingSize);
+        ESftpConflictAction action = SFTP_CONFLICT_CANCEL;
+        BOOL applyToAll = FALSE;
+        char newNameBuf[MAX_PATH] = "";
+        INT_PTR res = dlg.ExecuteDlg(action, applyToAll, newNameBuf, sizeof(newNameBuf));
+
+        if (res == IDCANCEL || action == SFTP_CONFLICT_CANCEL)
+        {
+            return -1; // Cancel
+        }
+
+        if (newNameBuf[0] != 0 && strcmp(newNameBuf, tgtName) != 0)
+        {
+            outNewTargetName = newNameBuf;
+        }
+
+        if (applyToAll)
+        {
+            if (action == SFTP_CONFLICT_OVERWRITE || action == SFTP_CONFLICT_OVERWRITE_ALL)
+                OverwriteAllDecision = 1;
+            else if (action == SFTP_CONFLICT_SKIP)
+                OverwriteAllDecision = 0;
+            else if (action == SFTP_CONFLICT_RESUME)
+                OverwriteAllDecision = 2;
+            else if (action == SFTP_CONFLICT_RESUME_OR_OVERWRITE)
+                OverwriteAllDecision = 3;
+        }
+
+        switch (action)
+        {
+        case SFTP_CONFLICT_RETRY:
+            outResumeOffset = 0;
+            return 1;
+        case SFTP_CONFLICT_RESUME:
+            outResumeOffset = existingSize;
+            return 1;
+        case SFTP_CONFLICT_RESUME_OR_OVERWRITE:
+            if (existingSize > 0 && existingSize < newSize)
+                outResumeOffset = existingSize;
+            else
+                outResumeOffset = 0;
+            return 1;
+        case SFTP_CONFLICT_OVERWRITE:
+        case SFTP_CONFLICT_OVERWRITE_ALL:
+            outResumeOffset = 0;
+            return 1;
+        case SFTP_CONFLICT_SKIP:
+            return 0;
+        default:
+            return -1;
+        }
+    }
+
+    // Default fallback for non-interactive test/batch
+    outResumeOffset = 0;
+    return 1;
 }
 
 bool CSftpTransferWorker::StaticProgressCallback(void* ctx, const char* name, unsigned __int64 done, unsigned __int64 total)
