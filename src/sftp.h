@@ -510,6 +510,7 @@ protected:
 //
 
 class CPluginFSInterface;
+class CSftpProgressDlgThread;
 
 class CSftpTransferProgressDlg : public CCommonDialog, public ISftpTransferDlgObserver
 {
@@ -563,6 +564,11 @@ protected:
     std::vector<CSftpTransferTask> CachedTasks;
     std::vector<size_t> DisplayedTaskIndices;
 
+    CSftpProgressDlgThread* DlgThread;
+    int MinClientWidth;
+    int MinClientHeight;
+    BOOL InLayout;
+
 public:
     CSftpTransferProgressDlg(HWND parent, CObjectOrigin origin = ooStandard);
     virtual ~CSftpTransferProgressDlg();
@@ -580,18 +586,45 @@ public:
     virtual void DetachWorker() override;
     void UpdateFromWorker();
     BOOL GetIsBackground() const { return IsBackground; }
+    void ShowFromBackground();
 
     void ToggleSimpleLook();
     void ShowControlsAndChangeSize(BOOL simple);
+    void LayoutDialog();
+    void SetColumnWidths();
     void InitListViews();
     void RefreshListViews();
     void ShowNextError();
+
+    void SetDlgThread(CSftpProgressDlgThread* thread) { DlgThread = thread; }
 
 protected:
     virtual INT_PTR DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
     void EnableCancel(BOOL enable);
     void FlushDataToControls();
 };
+
+class CSftpProgressDlgThread
+{
+protected:
+    HANDLE ThreadHandle;
+    unsigned ThreadId;
+    CSftpTransferProgressDlg* Dlg;
+    HWND ParentWnd;
+    HANDLE InitEvent;
+
+public:
+    CSftpProgressDlgThread(CSftpTransferProgressDlg* dlg, HWND parent);
+    ~CSftpProgressDlgThread();
+
+    BOOL Start();
+    void WaitForExit(DWORD timeoutMs = INFINITE);
+
+protected:
+    static unsigned __stdcall ThreadProc(void* param);
+    unsigned Run();
+};
+
 
 //
 // ****************************************************************************
