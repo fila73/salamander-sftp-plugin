@@ -838,9 +838,36 @@ void CSftpTransferProgressDlg::ShowControlsAndChangeSize(BOOL simple)
     }
 
     SetDlgItemText(HWindow, IDB_SHOWDETAILS, simple ? "Detaily >>" : "<< Detaily");
-    if (ItemsListView != NULL && !simple)
+    if (!simple)
     {
-        RefreshListViews();
+        SftpApplyDarkModeToWindow(HWindow);
+        if (PluginDarkMode_ShouldUseDark())
+        {
+            COLORREF textCol = RGB(220, 220, 220);
+            COLORREF bgCol = RGB(32, 32, 32);
+            if (ConsListView)
+            {
+                ListView_SetTextColor(ConsListView, textCol);
+                ListView_SetTextBkColor(ConsListView, bgCol);
+                ListView_SetBkColor(ConsListView, bgCol);
+                SetWindowTheme(ConsListView, L"DarkMode_Explorer", NULL);
+                HWND hHdr = ListView_GetHeader(ConsListView);
+                if (hHdr) SetWindowTheme(hHdr, L"DarkMode_ItemsView", NULL);
+            }
+            if (ItemsListView)
+            {
+                ListView_SetTextColor(ItemsListView, textCol);
+                ListView_SetTextBkColor(ItemsListView, bgCol);
+                ListView_SetBkColor(ItemsListView, bgCol);
+                SetWindowTheme(ItemsListView, L"DarkMode_Explorer", NULL);
+                HWND hHdr = ListView_GetHeader(ItemsListView);
+                if (hHdr) SetWindowTheme(hHdr, L"DarkMode_ItemsView", NULL);
+            }
+        }
+        if (ItemsListView != NULL)
+        {
+            RefreshListViews();
+        }
     }
 }
 
@@ -872,6 +899,13 @@ void CSftpTransferProgressDlg::UpdateFromWorker()
 {
     if (Worker == NULL)
         return;
+
+    if (IsBackground || !IsWindowVisible(HWindow))
+    {
+        // When running in background, do not touch window controls or title!
+        // This prevents menu dismissing and cursor flickering in Open Salamander.
+        return;
+    }
 
     CSftpTransferState snap;
     Worker->GetStateSnapshot(snap);
@@ -1190,79 +1224,72 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
 
         if (pnm->idFrom == IDL_CONNECTIONS)
         {
-            if (pnm->code == LVN_GETDISPINFOA)
+            if (pnm->code == LVN_GETDISPINFOA || pnm->code == LVN_GETDISPINFOW)
             {
-                NMLVDISPINFOA* pDisp = (NMLVDISPINFOA*)lParam;
-                if (pDisp->item.mask & LVIF_TEXT)
+                CSftpTransferState snap;
+                bool isPaused = false;
+                bool isRunning = false;
+                bool hasError = false;
+                if (Worker != NULL)
                 {
-                    CSftpTransferState snap;
-                    bool isPaused = false;
-                    bool isRunning = false;
-                    bool hasError = false;
-                    if (Worker != NULL)
-                    {
-                        Worker->GetStateSnapshot(snap);
-                        isPaused = snap.IsPaused;
-                        isRunning = snap.IsRunning;
-                        hasError = snap.HasError;
-                    }
-
-                    if (pDisp->item.iSubItem == 0)
-                    {
-                        lstrcpynA(pDisp->item.pszText, "1", pDisp->item.cchTextMax);
-                    }
-                    else if (pDisp->item.iSubItem == 1)
-                    {
-                        const char* act = OperationFinished ? "Dokončeno" : (IsUpload ? "Odesílání souborů" : "Stahování souborů");
-                        lstrcpynA(pDisp->item.pszText, act, pDisp->item.cchTextMax);
-                    }
-                    else if (pDisp->item.iSubItem == 2)
-                    {
-                        const char* st = OperationFinished ? "Dokončeno" : (isPaused ? "Pozastaveno" : (hasError ? "Chyba" : (isRunning ? "Zpracovávám" : "Čekání")));
-                        lstrcpynA(pDisp->item.pszText, st, pDisp->item.cchTextMax);
-                    }
+                    Worker->GetStateSnapshot(snap);
+                    isPaused = snap.IsPaused;
+                    isRunning = snap.IsRunning;
+                    hasError = snap.HasError;
                 }
-                return TRUE;
-            }
-            else if (pnm->code == LVN_GETDISPINFOW)
-            {
-                NMLVDISPINFOW* pDispW = (NMLVDISPINFOW*)lParam;
-                if (pDispW->item.mask & LVIF_TEXT)
+
+                int subItem = (pnm->code == LVN_GETDISPINFOA) ? ((NMLVDISPINFOA*)lParam)->item.iSubItem : ((NMLVDISPINFOW*)lParam)->item.iSubItem;
+                const char* act = "";
+                if (subItem == 0)
+                    act = "1";
+                else if (subItem == 1)
+                    act = OperationFinished ? "Dokončeno" : (IsUpload ? "Odesílání souborů" : "Stahování souborů");
+                else if (subItem == 2)
+                    act = OperationFinished ? "Dokončeno" : (isPaused ? "Pozastaveno" : (hasError ? "Chyba" : (isRunning ? "Zpracovávám" : "Čekání")));
+
+                if (pnm->code == LVN_GETDISPINFOA)
                 {
-                    char bufA[256] = "";
-                    NMLVDISPINFOA dispA = {};
-                    dispA.hdr = pDispW->hdr;
-                    dispA.item.mask = LVIF_TEXT;
-                    dispA.item.iItem = pDispW->item.iItem;
-                    dispA.item.iSubItem = pDispW->item.iSubItem;
-                    dispA.item.pszText = bufA;
-                    dispA.item.cchTextMax = sizeof(bufA);
-                    SendMessage(HWindow, WM_NOTIFY, IDL_CONNECTIONS, (LPARAM)&dispA);
-                    MultiByteToWideChar(CP_ACP, 0, bufA, -1, pDispW->item.pszText, pDispW->item.cchTextMax);
+                    NMLVDISPINFOA* pDispA = (NMLVDISPINFOA*)lParam;
+                    if (pDispA->item.mask & LVIF_TEXT)
+                        lstrcpynA(pDispA->item.pszText, act, pDispA->item.cchTextMax);
+                }
+                else
+                {
+                    NMLVDISPINFOW* pDispW = (NMLVDISPINFOW*)lParam;
+                    if ((pDispW->item.mask & LVIF_TEXT) && pDispW->item.pszText != NULL && pDispW->item.cchTextMax > 0)
+                        MultiByteToWideChar(CP_ACP, 0, act, -1, pDispW->item.pszText, pDispW->item.cchTextMax);
                 }
                 return TRUE;
             }
         }
         else if (pnm->idFrom == IDL_OPERATIONS)
         {
-            if (pnm->code == LVN_GETDISPINFOA)
+            if (pnm->code == LVN_GETDISPINFOA || pnm->code == LVN_GETDISPINFOW)
             {
-                NMLVDISPINFOA* pDisp = (NMLVDISPINFOA*)lParam;
-                int itemIdx = pDisp->item.iItem;
+                int itemIdx = (pnm->code == LVN_GETDISPINFOA) ? ((NMLVDISPINFOA*)lParam)->item.iItem : ((NMLVDISPINFOW*)lParam)->item.iItem;
+                int subItem = (pnm->code == LVN_GETDISPINFOA) ? ((NMLVDISPINFOA*)lParam)->item.iSubItem : ((NMLVDISPINFOW*)lParam)->item.iSubItem;
+                UINT mask = (pnm->code == LVN_GETDISPINFOA) ? ((NMLVDISPINFOA*)lParam)->item.mask : ((NMLVDISPINFOW*)lParam)->item.mask;
+
                 if (itemIdx >= 0 && (size_t)itemIdx < DisplayedTaskIndices.size())
                 {
                     size_t actualIdx = DisplayedTaskIndices[itemIdx];
                     if (actualIdx < CachedTasks.size())
                     {
                         const CSftpTransferTask& t = CachedTasks[actualIdx];
-                        if (pDisp->item.mask & LVIF_IMAGE)
+                        if (mask & LVIF_IMAGE)
                         {
                             const char* p = !t.LocalPath.empty() ? t.LocalPath.c_str() : t.RemotePath.c_str();
-                            pDisp->item.iImage = SftpGetSysIconIndex(p, t.IsDirectory);
+                            int iconIdx = SftpGetSysIconIndex(p, t.IsDirectory);
+                            if (pnm->code == LVN_GETDISPINFOA)
+                                ((NMLVDISPINFOA*)lParam)->item.iImage = iconIdx;
+                            else
+                                ((NMLVDISPINFOW*)lParam)->item.iImage = iconIdx;
                         }
-                        if (pDisp->item.mask & LVIF_TEXT)
+
+                        if (mask & LVIF_TEXT)
                         {
-                            if (pDisp->item.iSubItem == 0)
+                            char textBuf[512] = "";
+                            if (subItem == 0)
                             {
                                 const char* name = t.RemotePath.c_str();
                                 const char* slash = strrchr(name, '/');
@@ -1274,54 +1301,46 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
                                     if (slash != NULL)
                                         name = slash + 1;
                                 }
-                                lstrcpynA(pDisp->item.pszText, name, pDisp->item.cchTextMax);
+                                lstrcpynA(textBuf, name, sizeof(textBuf));
                             }
-                            else if (pDisp->item.iSubItem == 1)
+                            else if (subItem == 1)
                             {
                                 switch (t.Status)
                                 {
                                 case CSftpTransferTask::StatusWaiting:
-                                    lstrcpynA(pDisp->item.pszText, "Čeká", pDisp->item.cchTextMax);
+                                    lstrcpynA(textBuf, "Čeká", sizeof(textBuf));
                                     break;
                                 case CSftpTransferTask::StatusRunning:
-                                    lstrcpynA(pDisp->item.pszText, "Probíhá", pDisp->item.cchTextMax);
+                                    lstrcpynA(textBuf, "Probíhá", sizeof(textBuf));
                                     break;
                                 case CSftpTransferTask::StatusDone:
-                                    lstrcpynA(pDisp->item.pszText, "Dokončeno", pDisp->item.cchTextMax);
+                                    lstrcpynA(textBuf, "Dokončeno", sizeof(textBuf));
                                     break;
                                 case CSftpTransferTask::StatusError:
                                     if (!t.ErrorMsg.empty())
-                                        _snprintf_s(pDisp->item.pszText, pDisp->item.cchTextMax, _TRUNCATE, "Chyba: %s", t.ErrorMsg.c_str());
+                                        _snprintf_s(textBuf, sizeof(textBuf), _TRUNCATE, "Chyba: %s", t.ErrorMsg.c_str());
                                     else
-                                        lstrcpynA(pDisp->item.pszText, "Chyba", pDisp->item.cchTextMax);
+                                        lstrcpynA(textBuf, "Chyba", sizeof(textBuf));
                                     break;
                                 case CSftpTransferTask::StatusSkipped:
-                                    lstrcpynA(pDisp->item.pszText, "Přeskočeno", pDisp->item.cchTextMax);
+                                    lstrcpynA(textBuf, "Přeskočeno", sizeof(textBuf));
                                     break;
                                 }
                             }
+
+                            if (pnm->code == LVN_GETDISPINFOA)
+                            {
+                                NMLVDISPINFOA* pA = (NMLVDISPINFOA*)lParam;
+                                lstrcpynA(pA->item.pszText, textBuf, pA->item.cchTextMax);
+                            }
+                            else
+                            {
+                                NMLVDISPINFOW* pW = (NMLVDISPINFOW*)lParam;
+                                if (pW->item.pszText != NULL && pW->item.cchTextMax > 0)
+                                    MultiByteToWideChar(CP_ACP, 0, textBuf, -1, pW->item.pszText, pW->item.cchTextMax);
+                            }
                         }
                     }
-                }
-                return TRUE;
-            }
-            else if (pnm->code == LVN_GETDISPINFOW)
-            {
-                NMLVDISPINFOW* pDispW = (NMLVDISPINFOW*)lParam;
-                char bufA[512] = "";
-                NMLVDISPINFOA dispA = {};
-                dispA.hdr = pDispW->hdr;
-                dispA.item.mask = pDispW->item.mask;
-                dispA.item.iItem = pDispW->item.iItem;
-                dispA.item.iSubItem = pDispW->item.iSubItem;
-                dispA.item.pszText = bufA;
-                dispA.item.cchTextMax = sizeof(bufA);
-                SendMessage(HWindow, WM_NOTIFY, IDL_OPERATIONS, (LPARAM)&dispA);
-                if (pDispW->item.mask & LVIF_IMAGE)
-                    pDispW->item.iImage = dispA.item.iImage;
-                if ((pDispW->item.mask & LVIF_TEXT) && pDispW->item.pszText != NULL && pDispW->item.cchTextMax > 0)
-                {
-                    MultiByteToWideChar(CP_ACP, 0, bufA, -1, pDispW->item.pszText, pDispW->item.cchTextMax);
                 }
                 return TRUE;
             }
@@ -1424,7 +1443,6 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
 
     case WM_CTLCOLORDLG:
     case WM_CTLCOLORSTATIC:
-    case WM_CTLCOLORBTN:
     {
 #ifdef USE_DARKMODELIB
         LRESULT brush = 0;
@@ -1443,6 +1461,13 @@ INT_PTR CSftpTransferProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lP
             static HBRUSH s_darkBgBrush = CreateSolidBrush(RGB(32, 32, 32));
             return (INT_PTR)s_darkBgBrush;
         }
+        break;
+    }
+
+    case WM_CTLCOLORBTN:
+    {
+        // DO NOT return a solid dark brush for standard push buttons!
+        // Button theming is handled via SetWindowTheme(child, L"DarkMode_Explorer", NULL).
         break;
     }
 
