@@ -67,5 +67,9 @@ Tento dokument shromažďuje nápady, náměty na rozšíření a potenciální 
   3. Klávesnicová navigace: plná podpora `Tab`, `Shift+Tab` a šipek přes dialogový hook `IsDialogMessage`.
 - **Stav**: Kompletně dokončeno a nasazeno.
 
-
-
+### 16. Dedikované UI vlákno transfer dialogu (`CSftpProgressDlgThread`), dynamický resizing a plnohodnotné zobrazení po vzoru FTP [HOTOVO – v1.3.3]
+- **Popis**:
+  1. **Izolace dialogu do samostatného UI threadu (`CSftpProgressDlgThread`)**: Přenosový dialog běží ve vlastním dedikovaném vlákně s vlastní `GetMessage` smyčkou po vzoru `COperationDlgThread` z FTP pluginu. Žádné zprávy ani ticky timeru neruší hlavní vlákno Salamandera (rozbalené menu nezhasíná, kurzor neproblikává, i když je okno na pozadí či bez fokusu).
+  2. **Dynamický layout a resizing (`LayoutDialog` / `SetColumnWidths`)**: Dialog podporuje změnu velikosti (`WM_SIZE`). Seznamy Spojení a Operace si proporcionálně dělí volnou vertikální výšku (35 % / 65 %), ovládací tlačítka jsou ukotvena vpravo dole a šířky sloupců se dynamicky přepočítávají.
+  3. **Bohaté informace o přenosech (dle vzoru FTP)**: Akce ve Spojení zobrazuje `Kopíruji <soubor>`, stav formátuje přenesený objem, celkový objem, rychlost v MB/s, procenta a zbývající čas. Sekce Operace nese nadpis `Operace: (hotovo / celkem)`, detailní popis `Kopírovat <soubor> (<velikost>) z <odkud> do <kam> / v režimu přenosu SFTP`, stavy (Čeká, Zpracovávám, Dokončeno, Chyba, Přeskočeno) a tlačítko `Zastavit` (`IDB_OPCONSSTOP`).
+- **Stav**: Kompletně dokončeno a nasazeno.

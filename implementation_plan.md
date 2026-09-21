@@ -131,6 +131,17 @@ Dialog se zvětší směrem dolů a pod dělící linkou (`IDC_DLGSPLITBAR`) odh
   - Editboxu v `IDD_CONFLICTDLG` nastaven Dark Mode přes `WM_CTLCOLOREDIT` a `DarkMode_CFD`.
   - Rozšířen popisek ze šířky 52 na 60, čímž byl vyřešen oříznutý text „Zdrojový ná".
 
+### 8. Vlastní UI vlákno dialogu (`CSftpProgressDlgThread`), dynamický layout a bohaté informace po vzoru FTP [HOTOVO – Commit 85c5ba6]
+- [MODIFY] [sftp.h](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.h) a [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp):
+  - **Izolované UI vlákno**: Implementována třída `CSftpProgressDlgThread`, která spouští modeless přenosový dialog ve vlastním vlákně s vlastní smyčkou `GetMessage`. Hlavní UI vlákno Salamandera není nijak zatěžováno ani rušeno (rozbalené menu nezhasíná, kurzor neproblikává, i když je okno na pozadí či bez fokusu).
+  - **Dynamický layout a resizing**: Přidána obsluha `WM_SIZE` a `WM_GETMINMAXINFO`. Metoda `LayoutDialog()` pomocí `BeginDeferWindowPos` dynamicky roztahuje horní část i oba seznamy, které si proporcionálně dělí volnou vertikální výšku (35 % pro Spojení, 65 % pro Operace). Tlačítka jsou ukotvena vpravo dole a metoda `SetColumnWidths()` automaticky přizpůsobuje šířky sloupců šířce okna.
+  - **Plné informace o přenosech (dle vzoru FTP)**:
+    - *Spojení*: Akce formátuje `Kopíruji <soubor>`, Stav formátuje `X MB z Y MB (za Z MB/s), P %, zbývající čas: ETA`, přidáno tlačítko `Zastavit` (`IDB_OPCONSSTOP`).
+    - *Operace*: Nadpis nese `Operace: (hotovo / celkem)`, Popis formátuje detailní text `Kopírovat <soubor> (<velikost>) z <odkud> do <kam> / v režimu přenosu SFTP`, Stavy ukazují `Čeká`, `Zpracovávám`, `Dokončeno`, `Chyba: <popis>`, `Přeskočeno`.
+    - *Horní stav*: `Stav: X MB z Y MB, celková rychlost přenosu: Z MB/s`.
+- [MODIFY] [sftp.rh2](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.rh2), [lang_cs.rc2](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_cs.rc2), [lang.rc2](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang.rc2), [lang_cs.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_cs.rc), [lang_en.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_en.rc):
+  - Přidány identifikátory, lokalizované šablony textů a tlačítko `Zastavit` pod seznamem spojení.
+
 ---
 
 ## Verifikační plán

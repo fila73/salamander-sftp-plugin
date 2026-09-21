@@ -154,6 +154,12 @@ Pro maximální přenositelnost bez nutnosti instalovat MinGW/GCC runtimes:
 4. **Prefix aktivní konexe `[NAS]` v cestách a titulku**:
    - Vzdálené cesty v polích `From:` a `To:` jsou formátovány pomocí `SftpFormatTransferPath`: detekuje se vzdálená cesta (`SftpIsPathRemote`) a automaticky se předřadí jméno aktivního profilu `[NAS] /cesta` s následným zkrácením přes `PathCompactPathExA` (prefix `[NAS]` zůstává vždy zachován).
    - Titulek okna v `WM_INITDIALOG` je rovněž obohacen o prefix `[Jméno_konexe]`, což uživateli umožňuje okamžitě vidět, ke kterému serveru operace náleží.
+5. **Dedikované UI vlákno dialogu (`CSftpProgressDlgThread`)**:
+   - Po vzoru FTP pluginu (`COperationDlgThread`) běží každý přenosový dialog v samostatném dedikovaném UI vlákně s vlastní zprávovou smyčkou `GetMessage`.
+   - Zprávy o aktualizaci workeru (`WM_APP_SFTP_WORKER_UPDATE`) i časovače se zpracovávají výhradně v tomto vlákně, čímž je zcela eliminováno jakékoli rušení hlavního okna Salamandera (rozbalená menu nezhasínají, kurzor neproblikává, ani když je okno na pozadí či bez fokusu).
+6. **Dynamický layout a resizing (`LayoutDialog` / `SetColumnWidths`)**:
+   - V detailním zobrazení si seznam Spojení (`IDL_CONNECTIONS`) a seznam Operací (`IDL_OPERATIONS`) proporcionálně dělí dostupnou vertikální výšku okna (35 % pro Spojení, 65 % pro Operace).
+   - Tlačítka pod seznamy jsou spolehlivě ukotvena vpravo dole a šířky sloupců v obou seznamech se dynamicky dopočítávají podle aktuální šířky klientské oblasti.
 
 ---
 
