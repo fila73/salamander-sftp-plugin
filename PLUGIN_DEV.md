@@ -389,17 +389,33 @@ Pro zajištění konzistence se standardními pluginy Salamanderu (zejména vest
 ### 3. Klávesnicová navigace v modeless dialozích (`IsDialogMessage`)
 - Modeless (nemodální) dialogy v aplikaci s hlavní smyčkou zpráv hlavního okna nedostávají automaticky klávesy `Tab`, `Shift+Tab`, `Esc` ani šipky pro přepínání prvků, pokud zpráva neprojde funkcí `IsDialogMessage`.
 - Plugin v `src/sftp.cpp` udržuje globální seznam aktivních HWND dialogů `g_TransferDlgHwnds` chráněný kritickou sekcí.
-- Ve vláknovém hooku `GetMsgHookProc` (`WH_GETMESSAGE`):
+- **Kritické pravidlo**: `IsDialogMessage` se ve vláknovém hooku `WH_GETMESSAGE` **smí volat pouze pro klávesové zprávy** (`pMsg->message >= WM_KEYFIRST && pMsg->message <= WM_KEYLAST`) a pouze pro **viditelná okna** (`IsWindowVisible(hDlg)`).
+  - *Důvod*: Pokud by se `IsDialogMessage` zavolala pro myšové nebo non-client zprávy (`WM_NCLBUTTONDOWN`, `WM_LBUTTONDOWN` atd.), vrátí `TRUE`, hook zprávu vynuluje (`WM_NULL`) a Windows ji nikdy nedoručí do `DispatchMessage`. Následkem toho systém Windows vůbec nespustí vnitřní smyčku pro posun okna (`SC_MOVE`), okno nelze chytit za horní lištu, zamrzne v pohybu a ignoruje kliknutí myši.
+- Správná implementace v hooku `GetMsgHookProc`:
   ```cpp
-  for (HWND hDlg : dlgList)
+  if (pMsg->message >= WM_KEYFIRST && pMsg->message <= WM_KEYLAST)
   {
-      if (IsWindow(hDlg) && IsDialogMessage(hDlg, pMsg))
+      for (HWND hDlg : dlgList)
       {
-          pMsg->message = WM_NULL; // Zpráva byla zkonzumována dialogem
-          return 0;
+          if (IsWindow(hDlg) && IsWindowVisible(hDlg) && IsDialogMessage(hDlg, pMsg))
+          {
+              pMsg->message = WM_NULL; // Klávesa byla zkonzumována dialogem
+              return 0;
+          }
       }
   }
   ```
-- Tím je zaručena 100% spolehlivá klávesnicová navigace mezi všemi prvky a tlačítky bez kolizí s hlavní aplikací.
+
+### 4. Pravidla pro Dark Mode u dynamicky zobrazovaných prvků a ListView
+- **Tlačítka a `WM_CTLCOLORBTN`**: Při použití vizuálních stylů uxtheme (`DarkMode_Explorer`) se pro tlačítka v `WM_CTLCOLORBTN` **nesmí vracet tmavý štětec**. Vrácení tmavého štětce způsobí, že Windows podklad tlačítka vykreslí jako černý nečitelný obdélník.
+- **ListView a dynamické prvky**: Při dynamickém zvětšení okna (např. po kliknutí na „Detaily >>") je nutné zavolat `SftpApplyDarkModeToWindow(HWindow)` na nově zobrazené ovládací prvky a pro všechny `SysListView32` explicitně nastavit:
+  ```cpp
+  ListView_SetTextColor(hList, RGB(220, 220, 220));
+  ListView_SetTextBkColor(hList, RGB(25, 25, 25));
+  ListView_SetBkColor(hList, RGB(25, 25, 25));
+  SetWindowTheme(hList, L"DarkMode_Explorer", NULL);
+  SetWindowTheme(ListView_GetHeader(hList), L"DarkMode_ItemsView", NULL);
+  ```
+- **Zamezení rušení hlavní smyčky Salamandera na pozadí**: Pokud je dialog skrytý po stisku „Na pozadí", funkce `UpdateFromWorker` nesmí volat `SetWindowText`, `SetDlgItemText` ani `InvalidateRect`. Tyto zprávy ruší rozbalená menu Salamandera a způsobují poblikávání kurzoru. Stačí test: `if (IsBackground || !IsWindowVisible(HWindow)) return;`.
 
 

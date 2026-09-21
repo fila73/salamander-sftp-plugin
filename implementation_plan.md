@@ -120,6 +120,17 @@ Dialog se zvětší směrem dolů a pod dělící linkou (`IDC_DLGSPLITBAR`) odh
   - Ošetření checkboxu `[x] Po skončení operace zavřít toto okno` při `WM_APP_SFTP_WORKER_FINISHED`. Pokud není zaškrtnuto, dialog zůstane otevřený, tlačítko Storno se změní na Zavřít s fokusem, tlačítka Pauza a Na pozadí se zakáží a stav ukáže `(hotovo)`.
   - Aktualizace unit testů `test/test_worker.cpp`.
 
+### 7. Oprava zjištěných chyb a stabilizace UI [HOTOVO – Hotovo]
+- [MODIFY] [fs2.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/fs2.cpp):
+  - **Odstranění pádu na Stack Overflow**: V `case LVN_GETDISPINFOW` odstraněno rekurzivní volání `SendMessage` a texty i ikony se plní přímo na místě.
+  - **Odstranění černých ploch po rozbalení detailů**: Nastaveny barvy a témata `DarkMode_Explorer` a `DarkMode_ItemsView` pro oba ListView; v `WM_CTLCOLORBTN` se již nevrací tmavý štětec pro standardní tlačítka s vizuálním stylem.
+  - **Zamezení rušení menu a kurzoru na pozadí**: V `UpdateFromWorker` doplněna pojistka `if (IsBackground || !IsWindowVisible(HWindow)) return;`, takže skrytý dialog zbytečně neposílá aktualizace a nezhasíná menu Salamandera.
+- [MODIFY] [sftp.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftp.cpp):
+  - **Odblokování pohybu okna za záhlaví**: V `GetMsgHookProc` striktně omezeno `IsDialogMessage` pouze na klávesové zprávy (`WM_KEYFIRST` až `WM_KEYLAST`) a viditelná okna, což obnovilo možnost posouvat okno za lištu a klikat myší.
+- [MODIFY] [sftpconflictdlg.cpp](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/sftpconflictdlg.cpp), [lang_cs.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_cs.rc), [lang_en.rc](file:///c:/Users/filip/AntigravityProjects/salamander-sftp-plugin/src/lang/lang_en.rc):
+  - Editboxu v `IDD_CONFLICTDLG` nastaven Dark Mode přes `WM_CTLCOLOREDIT` a `DarkMode_CFD`.
+  - Rozšířen popisek ze šířky 52 na 60, čímž byl vyřešen oříznutý text „Zdrojový ná".
+
 ---
 
 ## Verifikační plán
