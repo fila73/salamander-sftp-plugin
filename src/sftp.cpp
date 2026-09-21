@@ -173,17 +173,21 @@ static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam)
         if (pMsg != NULL && pMsg->message != WM_NULL)
         {
             // Modeless transfer dialog keyboard navigation (Tab, Shift+Tab, Arrows, Space, Enter, Esc)
-            for (size_t i = 0; i < g_TransferDlgHwnds.size(); i++)
+            // MUST ONLY be called for keyboard messages! Mouse and NC messages must pass to DispatchMessage!
+            if (pMsg->message >= WM_KEYFIRST && pMsg->message <= WM_KEYLAST)
             {
-                HWND hDlg = g_TransferDlgHwnds[i];
-                if (hDlg != NULL && IsWindow(hDlg))
+                for (size_t i = 0; i < g_TransferDlgHwnds.size(); i++)
                 {
-                    if (pMsg->hwnd == hDlg || IsChild(hDlg, pMsg->hwnd))
+                    HWND hDlg = g_TransferDlgHwnds[i];
+                    if (hDlg != NULL && IsWindow(hDlg) && IsWindowVisible(hDlg))
                     {
-                        if (IsDialogMessage(hDlg, pMsg))
+                        if (pMsg->hwnd == hDlg || IsChild(hDlg, pMsg->hwnd))
                         {
-                            pMsg->message = WM_NULL;
-                            return 0;
+                            if (IsDialogMessage(hDlg, pMsg))
+                            {
+                                pMsg->message = WM_NULL;
+                                return 0;
+                            }
                         }
                     }
                 }
