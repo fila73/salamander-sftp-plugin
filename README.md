@@ -90,7 +90,7 @@ Negotiated automatically based on server capabilities:
 
 ### Connection Management & UI
 - Login dialog with categorized tree view and saved connections (New / Edit / Delete / Rename / Set as Default)
-- **Keepalive & Connection Stability**: Active periodic FS timer keepalive (8s) prevents idle disconnects on firewalls and TrueNAS / OpenSSH servers (`ClientAliveInterval`); non-blocking socket health check and automatic transparent reconnect & retry
+- **Keepalive & Connection Stability**: Active periodic FS timer keepalive (8s) prevents idle disconnects on firewalls and TrueNAS / OpenSSH servers (`ClientAliveInterval`); non-blocking socket health check and automatic transparent reconnect & retry; fix for libssh2 timer preventing spurious `Timed out waiting on socket` errors during slow server disk flushes.
 - Password visibility toggle (eye icon)
 - Dark mode support matching Open Salamander dark theme
 - Multi-language localization (`.slg` modules for English, Czech, and all 11 Salamander languages)

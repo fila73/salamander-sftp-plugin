@@ -66,6 +66,7 @@ public:
     bool GetSecurityInfo(std::string& out);
 
     bool MakeDir(const char* remotePath);
+    bool MakeDirRecursive(const char* remotePath);
     bool RemoveDir(const char* remotePath);
     bool RemoveFile(const char* remotePath);
     bool Rename(const char* oldPath, const char* newPath);

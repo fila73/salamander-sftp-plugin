@@ -424,4 +424,29 @@ Pro zajištění konzistence se standardními pluginy Salamanderu (zejména vest
   ```
 - **Zamezení rušení hlavní smyčky Salamandera na pozadí**: Pokud je dialog skrytý po stisku „Na pozadí", funkce `UpdateFromWorker` nesmí volat `SetWindowText`, `SetDlgItemText` ani `InvalidateRect`. Tyto zprávy ruší rozbalená menu Salamandera a způsobují poblikávání kurzoru. Stačí test: `if (IsBackground || !IsWindowVisible(HWindow)) return;`.
 
+---
+
+## 16. Ochrana proti pádu přenosu na `Timed out waiting on socket` a ladění socketů
+
+### 1. Příčina chyby `Writing remote file: Timed out waiting on socket`
+Při nahrávání větších souborů na server (např. NAS, pomalé disky, síťové výkyvy) docházelo k neočekávanému pádu přenosu:
+- V `libssh2` ve funkci `_libssh2_wait_socket` (v `src/libssh2/session.c`) se při čekání na socket v blokujícím režimu počítal timeout pro volání `select()` z periody keepalive (`libssh2_keepalive_send` vrací čas do příštího keepalive paketu, např. 10 s).
+- Pokud server během těchto 10 sekund nepotvrdil zápis do socketu (např. z důvodu flushování diskové vyrovnávací paměti na serveru nebo plného TCP receive okna), `select()` skončil s `rc == 0`.
+- Knihovna `libssh2` však `rc == 0` nekriticky vyhodnotila jako fatální chybu spojení:
+  ```c
+  if (rc == 0)
+      return ssh2_err(session, LIBSSH2_ERROR_TIMEOUT, "Timed out waiting on socket");
+  ```
+  i když šlo pouze o probuzení časovačem keepalive, nikoli o vypršení skutečného aplikačního timeoutu.
+
+### 2. Řešení v `src/libssh2/session.c`
+V `_libssh2_wait_socket` se návratová hodnota `rc == 0` rozlišuje:
+- Pokud je nastaven `api_timeout > 0`, ověří se skutečně uplynulý čas od začátku operace (`elapsed_time >= api_timeout`). Teprve při překročení celkového timeoutu se vrátí chyba `LIBSSH2_ERROR_TIMEOUT`. Pokud vypršel pouze dílčí keepalive interval, funkce vrátí `0` ("ready to try again"), což umožní odeslat keepalive sondu a pokračovat v čekání.
+- Pokud `api_timeout` není nastaven (`0`), timeout `select()` vznikl pouze periodou keepalive; funkce bezpečně vrací `0` a přenos pokračuje bez falešného přerušení.
+
+### 3. Nastavení socketů v `CSftpConnection::Connect`
+- **Session timeout**: Nastaven explicitní timeout operací `libssh2_session_set_timeout(Session, 60000)` (60 sekund), který dává serveru dostatek času pro diskové operace, ale chrání před nekonečným uváznutím.
+- **`TCP_NODELAY`**: Na socketu byl vypnut Nagleův algoritmus (`setsockopt(Sock, IPPROTO_TCP, TCP_NODELAY, ...)`), což zamezuje 40-200ms zpožděním při potvrzování SFTP bloků a zlepšuje plynulost toku dat.
+
+
 

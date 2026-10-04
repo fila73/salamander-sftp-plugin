@@ -101,7 +101,39 @@ void CSftpConnection::GlobalExit()
 void CSftpConnection::SetError(const char* ctx)
 {
     char buf[512];
-    if (Session)
+    unsigned long sftpErr = 0;
+    if (Sftp)
+        sftpErr = libssh2_sftp_last_error(Sftp);
+
+    const char* sftpDesc = nullptr;
+    switch (sftpErr)
+    {
+    case LIBSSH2_FX_EOF: sftpDesc = "End of file"; break;
+    case LIBSSH2_FX_NO_SUCH_FILE: sftpDesc = "No such file or directory"; break;
+    case LIBSSH2_FX_PERMISSION_DENIED: sftpDesc = "Permission denied"; break;
+    case LIBSSH2_FX_FAILURE: sftpDesc = "Generic failure"; break;
+    case LIBSSH2_FX_BAD_MESSAGE: sftpDesc = "Bad message"; break;
+    case LIBSSH2_FX_NO_CONNECTION: sftpDesc = "No connection"; break;
+    case LIBSSH2_FX_CONNECTION_LOST: sftpDesc = "Connection lost"; break;
+    case LIBSSH2_FX_OP_UNSUPPORTED: sftpDesc = "Operation unsupported"; break;
+    case LIBSSH2_FX_INVALID_HANDLE: sftpDesc = "Invalid handle"; break;
+    case LIBSSH2_FX_NO_SUCH_PATH: sftpDesc = "No such path"; break;
+    case LIBSSH2_FX_FILE_ALREADY_EXISTS: sftpDesc = "File already exists"; break;
+    case LIBSSH2_FX_WRITE_PROTECT: sftpDesc = "Write protect"; break;
+    case LIBSSH2_FX_NO_MEDIA: sftpDesc = "No media"; break;
+    case LIBSSH2_FX_NO_SPACE_ON_FILESYSTEM: sftpDesc = "No space on filesystem"; break;
+    case LIBSSH2_FX_QUOTA_EXCEEDED: sftpDesc = "Quota exceeded"; break;
+    case LIBSSH2_FX_UNKNOWN_PRINCIPAL: sftpDesc = "Unknown principal"; break;
+    case LIBSSH2_FX_LOCK_CONFLICT: sftpDesc = "Lock conflict"; break;
+    case LIBSSH2_FX_DIR_NOT_EMPTY: sftpDesc = "Directory not empty"; break;
+    case LIBSSH2_FX_NOT_A_DIRECTORY: sftpDesc = "Not a directory"; break;
+    }
+
+    if (sftpDesc != nullptr)
+    {
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%s: %s (SFTP %lu)", ctx, sftpDesc, sftpErr);
+    }
+    else if (Session)
     {
         char* msg = nullptr;
         int len = 0;
@@ -148,6 +180,7 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     // Enable TCP keepalive to prevent NAT / firewall timeouts during idle
     BOOL optval = TRUE;
     setsockopt(Sock, SOL_SOCKET, SO_KEEPALIVE, (const char*)&optval, sizeof(optval));
+    setsockopt(Sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&optval, sizeof(optval));
     struct tcp_keepalive ka;
     ka.onoff = 1;
     ka.keepalivetime = 15000;    // send probe after 15s idle
@@ -159,6 +192,7 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     Session = libssh2_session_init();
     if (!Session) { ErrorMsg = "libssh2_session_init failed."; SftpTraceLog("CSftpConnection::Connect: libssh2_session_init failed"); Disconnect(); return false; }
     libssh2_session_set_blocking(Session, 1);
+    libssh2_session_set_timeout(Session, 60000); // 60s timeout for socket operations
     SftpTraceLog("CSftpConnection::Connect: libssh2_session_init ok, session=%p", Session);
 
     // optional zlib compression (prefer, but allow without compression)
@@ -1364,6 +1398,18 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     }
     LIBSSH2_SFTP_HANDLE* h = libssh2_sftp_open(Sftp, remotePath, flags,
         LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
+    if (!h && Sftp && libssh2_sftp_last_error(Sftp) == LIBSSH2_FX_NO_SUCH_FILE)
+    {
+        std::string rp = remotePath;
+        size_t lastSlash = rp.rfind('/');
+        if (lastSlash != std::string::npos && lastSlash > 0)
+        {
+            std::string parentDir = rp.substr(0, lastSlash);
+            MakeDirRecursive(parentDir.c_str());
+            h = libssh2_sftp_open(Sftp, remotePath, flags,
+                LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
+        }
+    }
     if (!h) { SetError("Creating remote file"); fclose(f); return false; }
     if (resumeOffset > 0)
     {
@@ -1524,6 +1570,32 @@ bool CSftpConnection::MakeDir(const char* remotePath)
             LIBSSH2_SFTP_S_IRWXU | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IXGRP | LIBSSH2_SFTP_S_IROTH | LIBSSH2_SFTP_S_IXOTH))
     { SetError("Creating directory"); return false; }
     return true;
+}
+
+bool CSftpConnection::MakeDirRecursive(const char* remotePath)
+{
+    if (!remotePath || !*remotePath)
+        return false;
+    std::string path = remotePath;
+    for (size_t i = 0; i < path.size(); i++)
+    {
+        if (path[i] == '\\')
+            path[i] = '/';
+    }
+    size_t pos = 1;
+    while (pos < path.size())
+    {
+        size_t nextSlash = path.find('/', pos);
+        if (nextSlash == std::string::npos)
+            break;
+        std::string sub = path.substr(0, nextSlash);
+        if (!sub.empty() && sub != "/")
+        {
+            MakeDir(sub.c_str()); // ignore error if already exists
+        }
+        pos = nextSlash + 1;
+    }
+    return MakeDir(path.c_str());
 }
 
 bool CSftpConnection::RemoveDir(const char* remotePath)

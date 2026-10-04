@@ -90,7 +90,7 @@ Vše se vyjednává automaticky dle možností serveru:
 
 ### Správa připojení a UI
 - Přihlašovací dialog se stromem relací ve stylu WinSCP (Nová relace / Upravit / Smazat / Přejmenovat / Výchozí)
-- **Udržování spojení a stabilita**: Aktivní periodický FS timer keepalive (8 s) zabraňuje odpojení nečinných relací přes firewally a na serverech typu TrueNAS / OpenSSH (`ClientAliveInterval`); transparentní detekce živosti socketu a auto-reconnect & retry při operacích
+- **Udržování spojení a stabilita přenosů**: Aktivní periodický FS timer keepalive (8 s) zabraňuje odpojení nečinných relací přes firewally a na serverech typu TrueNAS / OpenSSH (`ClientAliveInterval`); transparentní detekce živosti socketu a auto-reconnect & retry při operacích; oprava interního časovače v `libssh2`, která zamezuje předčasnému pádu velkých přenosů na `Timed out waiting on socket` při diskovém zápisu serveru.
 - Zobrazení/skrytí hesla (ikona oka)
 - Podpora tmavého režimu (Dark Mode) sjednoceného se Salamanderem
 - Jazyková lokalizace (`.slg` moduly pro češtinu, angličtinu i všech 11 jazyků Salamandera)

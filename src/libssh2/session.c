@@ -657,9 +657,23 @@ int ssh2_wait_socket(LIBSSH2_SESSION *session, ssh2_time_t start_time)
                     has_timeout ? &tv : NULL);
     }
 #endif
-    if(rc == 0)
+    if(rc == 0) {
+        if(api_timeout > 0) {
+            ssh2_time_t now = ssh2_now();
+            elapsed_time = now > start_time ? (now - start_time) : 0;
+            if(elapsed_time >= api_timeout) {
+                return ssh2_err(session, LIBSSH2_ERROR_TIMEOUT,
+                                "Timed out waiting on socket");
+            }
+            return 0; /* Keepalive slice elapsed before API timeout, ready to try again */
+        }
+        if(session->keepalive_interval > 0 || !dir) {
+            /* Timeout was only due to keepalive wake-up interval or idle poll; ready to try again */
+            return 0;
+        }
         return ssh2_err(session, LIBSSH2_ERROR_TIMEOUT,
                         "Timed out waiting on socket");
+    }
 
     if(rc < 0) {
         /* Profiling tools that use SIGPROF can cause EINTR responses.
