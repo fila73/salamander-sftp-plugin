@@ -37,9 +37,10 @@ Při testování meziprotokolových přenosů v Open Salamanderu došlo ke dvěm
 - **V `CSftpConnection::SetError` a `CSftpConnection::Upload`**:
   - Zahrnout `libssh2_sftp_last_error(Sftp)` do chybového hlášení pro přesnou diagnostiku (např. `LIBSSH2_FX_PERMISSION_DENIED`, `LIBSSH2_FX_NO_SUCH_FILE`, `LIBSSH2_FX_FAILURE`).
   - V `Upload`: Pokud otevření souboru selže na chybějící cestě (`LIBSSH2_FX_NO_SUCH_FILE`), pokusit se automaticky vytvořit rodičovský adresář na serveru a zkusit otevřít znovu.
-- **Oprava pádu přenosu na `Writing remote file: Timed out waiting on socket`**:
+- **Oprava pádu přenosu na `Writing remote file: Timed out waiting on socket` [DOKONČENO ve v1.4.0]**:
   - V `src/libssh2/session.c` v `_libssh2_wait_socket` opraveno chybné vyhodnocení timeoutu `select()`, kdy vypršení periody keepalive bez nastaveného `api_timeout` způsobovalo shození spojení.
   - V `CSftpConnection::Connect` nastaven `libssh2_session_set_timeout(Session, 60000)` a `TCP_NODELAY`.
+  - Vytvořen a úspěšně otestován unit test `test/test_wait_socket_timeout.cpp`.
 
 ---
 
